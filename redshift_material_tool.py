@@ -65,10 +65,27 @@ class RedshiftMaterialTool:
             print(f"Texture directory not found: {self.tex_path}")
             return {}
 
+        print(f"Scanning for textures in: {self.tex_path}")
+
         # Walk through the tex directory
         for root, dirs, files in os.walk(self.tex_path):
+            # Debug info
+            udim_files = [f for f in files if self._is_udim_file(f)]
+            if udim_files:
+                print(f"Found potential UDIM files in {root}: {len(udim_files)} files")
+
             # Group files first to detect UDIM patterns
             file_groups = self._group_udim_files(files)
+
+            # Debug info for UDIM groups found
+            udim_groups = [g for g in file_groups if isinstance(g, dict)]
+            if udim_groups:
+                print(f"Identified {len(udim_groups)} UDIM texture groups in {root}")
+                for group in udim_groups:
+                    print(
+                        f"  - UDIM pattern: {group['base_file']} "
+                        f"with {len(group['files'])} tiles"
+                    )
 
             for file_or_group in file_groups:
                 # Check if this is a single file or a UDIM group
@@ -178,14 +195,20 @@ class RedshiftMaterialTool:
     def _is_udim_file(self, filename):
         """Check if a file is part of a UDIM sequence"""
         # UDIM pattern: typically has a 4-digit number like 1001, 1002, etc.
-        udim_pattern = r".*?[\._](?:u\d+_v\d+|[0-9]{4})[\._].*"
-        mari_pattern = r".*?[\._](?:u\d+_v\d+)[\._].*"  # Mari-style UDIMs
-        zbrush_pattern = r".*?[\._](?:[0-9]{4})[\._].*"  # ZBrush-style UDIMs
+        # Test for both standard patterns:
+        # - With separators on both sides: texture_1001_diffuse.exr or texture.1001.diffuse.exr
+        # - With separator only at the start: texture_1001.exr or texture.1001.exr
 
+        # Standard UDIM (4 digits)
+        udim_standard = r".*?([\._])[0-9]{4}([\._].*|$)"
+
+        # Mari-style UDIMs (u#_v#)
+        udim_mari = r".*?([\._])u\d+_v\d+([\._].*|$)"
+
+        # Check all patterns with case insensitivity
         return (
-            re.match(udim_pattern, filename, re.IGNORECASE)
-            or re.match(mari_pattern, filename, re.IGNORECASE)
-            or re.match(zbrush_pattern, filename, re.IGNORECASE)
+            re.match(udim_standard, filename, re.IGNORECASE) is not None
+            or re.match(udim_mari, filename, re.IGNORECASE) is not None
         )
 
     def _extract_udim_info(self, filename):
@@ -194,21 +217,39 @@ class RedshiftMaterialTool:
 
         # Mari-style: texture_u1_v1_diffuse.exr
         mari_match = re.match(
-            r"(.*?)[\._](u\d+_v\d+)([\._].*)", filename, re.IGNORECASE
+            r"(.*?)([\._])(u\d+_v\d+)([\._].*)", filename, re.IGNORECASE
         )
         if mari_match:
-            prefix, udim, suffix = mari_match.groups()
+            prefix, separator, udim, suffix = mari_match.groups()
+            # Convert to a pattern with <UDIM> placeholder - preserve original separator
+            return f"{prefix}{separator}<UDIM>{suffix}", udim
+
+        # Mari-style at end of filename: texture_diffuse_u1_v1.exr
+        mari_end_match = re.match(
+            r"(.*?)([\._])(u\d+_v\d+)(\..+)$", filename, re.IGNORECASE
+        )
+        if mari_end_match:
+            prefix, separator, udim, ext = mari_end_match.groups()
             # Convert to a pattern with <UDIM> placeholder
-            return f"{prefix}.<UDIM>{suffix}", udim
+            return f"{prefix}{separator}<UDIM>{ext}", udim
 
         # ZBrush/Standard UDIM: texture_1001_diffuse.exr
         zbrush_match = re.match(
-            r"(.*?)[\._]([0-9]{4})([\._].*)", filename, re.IGNORECASE
+            r"(.*?)([\._])([0-9]{4})([\._].*)", filename, re.IGNORECASE
         )
         if zbrush_match:
-            prefix, udim, suffix = zbrush_match.groups()
+            prefix, separator, udim, suffix = zbrush_match.groups()
+            # Convert to a pattern with <UDIM> placeholder - preserve original separator
+            return f"{prefix}{separator}<UDIM>{suffix}", udim
+
+        # UDIM at end of filename: texture_diffuse_1001.exr
+        udim_end_match = re.match(
+            r"(.*?)([\._])([0-9]{4})(\..+)$", filename, re.IGNORECASE
+        )
+        if udim_end_match:
+            prefix, separator, udim, ext = udim_end_match.groups()
             # Convert to a pattern with <UDIM> placeholder
-            return f"{prefix}.<UDIM>{suffix}", udim
+            return f"{prefix}{separator}<UDIM>{ext}", udim
 
         # If no pattern is found, return the filename (shouldn't happen if _is_udim_file is correct)
         return filename, None
@@ -522,9 +563,18 @@ class RedshiftMaterialTool:
                     filepath = os.path.join(texture_info["path"], udim_pattern)
                     texture_node.parm("tex0").set(filepath)
 
-                    # Try to enable UDIM support if the parameter exists
+                    # Try multiple ways to enable UDIM support depending on Redshift version
                     if texture_node.parm("tex0_udim") is not None:
                         texture_node.parm("tex0_udim").set(1)
+                    elif texture_node.parm("tex0_useudim") is not None:
+                        texture_node.parm("tex0_useudim").set(1)
+                    elif texture_node.parm("tex0_useUDIM") is not None:
+                        texture_node.parm("tex0_useUDIM").set(1)
+
+                    # Some Redshift versions use a different approach to UDIMs
+                    if texture_node.parm("tex0_uv_repeat") is not None:
+                        # Don't use default UV tiling with UDIMs
+                        texture_node.parm("tex0_uv_repeat").set(0)
                 else:
                     # Regular texture
                     texture_node.parm("tex0").set(texture_info["file_path"])
