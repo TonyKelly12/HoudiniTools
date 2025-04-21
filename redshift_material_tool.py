@@ -264,8 +264,14 @@ class RedshiftMaterialTool:
         # Remove extension
         base = os.path.splitext(filename)[0]
 
-        # Remove UDIM part if present
-        base = re.sub(r"[\._](?:u\d+_v\d+|[0-9]{4})[\._]", "_", base)
+        # Remove UDIM part if present (but preserve the base name)
+        # We need to handle the <UDIM> tag case separately
+        if "<UDIM>" in base:
+            # For patterns that already have the <UDIM> tag
+            base = base.replace("_<UDIM>_", "_").replace(".<UDIM>.", ".")
+        else:
+            # For actual UDIM file names with numbers or Mari style
+            base = re.sub(r"[\._](?:u\d+_v\d+|[0-9]{4})[\._]", "_", base)
 
         # Common naming patterns (e.g., "materialName_basecolor")
         pattern = (
@@ -326,8 +332,11 @@ class RedshiftMaterialTool:
             print("No valid material context found")
             return None
 
+        # Clean up material name - remove any <UDIM> tags which cause node creation problems
+        clean_material_name = material_name.replace("<UDIM>", "UDIM")
+            
         # Create material node using redshift_vopnet
-        rs_mat_name = f"RS_{material_name}"
+        rs_mat_name = f"RS_{clean_material_name}"
 
         try:
             # Create the redshift_vopnet node
@@ -524,11 +533,30 @@ class RedshiftMaterialTool:
 
                 # Create output node if it doesn't exist
                 if output_node is None:
-                    output_node = rs_mat.createNode("subnet_output", "output")
+                    # First try standard name
+                    try:
+                        output_node = rs_mat.createNode("subnet_output", "output")
+                    except:
+                        try:
+                            # Try alternative name used in some Houdini versions
+                            output_node = rs_mat.createNode("output", "output")
+                        except Exception as e2:
+                            print(f"Warning: Could not create output node: {str(e2)}")
+                            # Will try to use existing output node
 
-                # Connect redshift_material to output
-                output_node.setInput(0, redshift_material_node, 0)
-                print(f"Connected redshift_material to output node")
+                # Find output node one more time if we couldn't create it
+                if output_node is None:
+                    for child in rs_mat.children():
+                        if child.type().name() == "output" or child.name() == "output":
+                            output_node = child
+                            break
+                
+                # Connect redshift_material to output if we found/created an output node
+                if output_node is not None:
+                    output_node.setInput(0, redshift_material_node, 0)
+                    print(f"Connected redshift_material to output node")
+                else:
+                    print("Warning: Could not find or create output node. Material may not work correctly.")
             except Exception as e:
                 print(f"Warning: Failed to set up output connection: {str(e)}")
 
@@ -564,30 +592,52 @@ class RedshiftMaterialTool:
 
                     # Set the texture path
                     texture_node.parm("tex0").set(filepath)
+                    
+                    print(f"Setting UDIM texture path: {filepath}")
 
-                    # Enable UDIM support - set to "load as sequence"
-                    if texture_node.parm("tex0_udim") is not None:
-                        texture_node.parm("tex0_udim").set(1)  # Enable UDIM
+                    # UDIM flag handling for different Redshift versions
+                    # Try all known parameter names to ensure compatibility
+                    
+                    # 1. Set udim flag
+                    try:
+                        if texture_node.parm("tex0_udim") is not None:
+                            texture_node.parm("tex0_udim").set(1)
+                            print("Set tex0_udim parameter")
+                    except Exception as e:
+                        print(f"Warning: Could not set tex0_udim: {str(e)}")
 
-                    # Set sequence type to UDIM (value 1)
-                    if texture_node.parm("tex0_sequence_type") is not None:
-                        texture_node.parm("tex0_sequence_type").set(1)  # 1 = UDIM
-                    elif texture_node.parm("tex0_sequenceType") is not None:
-                        texture_node.parm("tex0_sequenceType").set(
-                            1
-                        )  # Alternative parameter name
-
-                    # Set to load sequence as one entry
-                    if texture_node.parm("tex0_load_as_sequence") is not None:
-                        texture_node.parm("tex0_load_as_sequence").set(
-                            1
-                        )  # Enable load as sequence
-                    elif texture_node.parm("tex0_loadAsSequence") is not None:
-                        texture_node.parm("tex0_loadAsSequence").set(
-                            1
-                        )  # Alternative parameter name
-
-                    print(f"Set up {tex_type} texture as UDIM sequence")
+                    # 2. Set sequence type to UDIM (1)
+                    sequence_type_set = False
+                    for param_name in ["tex0_sequence_type", "tex0_sequenceType"]:
+                        try:
+                            if texture_node.parm(param_name) is not None:
+                                texture_node.parm(param_name).set(1)  # 1 = UDIM
+                                sequence_type_set = True
+                                print(f"Set {param_name} parameter to UDIM (1)")
+                                break
+                        except Exception as e:
+                            print(f"Warning: Could not set {param_name}: {str(e)}")
+                    
+                    # 3. Set "Load as sequence" flag
+                    sequence_load_set = False
+                    for param_name in ["tex0_load_as_sequence", "tex0_loadAsSequence"]:
+                        try:
+                            if texture_node.parm(param_name) is not None:
+                                texture_node.parm(param_name).set(1)
+                                sequence_load_set = True
+                                print(f"Set {param_name} parameter")
+                                break
+                        except Exception as e:
+                            print(f"Warning: Could not set {param_name}: {str(e)}")
+                    
+                    # 4. Check if we set all necessary parameters
+                    if sequence_type_set and sequence_load_set:
+                        print(f"Successfully configured UDIM sequence for {tex_type}")
+                    else:
+                        print(f"Warning: Could not fully configure UDIM sequence for {tex_type}")
+                        
+                    # 5. Additional debug info
+                    print(f"UDIM pattern used: {udim_pattern}")
                 else:
                     # Regular texture
                     texture_node.parm("tex0").set(texture_info["file_path"])
@@ -643,10 +693,31 @@ class RedshiftMaterialTool:
             created_count = 0
             existed_count = 0
 
+            # Process material sets by mesh
             for mesh_name, materials in material_sets.items():
                 print(f"Processing materials for mesh: {mesh_name}")
-
+                
+                # Group UDIM textures of the same material type together
+                consolidated_materials = {}
+                
                 for material_name, textures in materials.items():
+                    # Check if this is a UDIM material by checking if "<UDIM>" is in the name
+                    base_material_name = material_name.replace("<UDIM>", "UDIM")
+                    
+                    # Strip any UDIM tile numbers from the name (like .1001e)
+                    # This helps consolidate materials that are detected as individual tiles
+                    base_material_name = re.sub(r'\.?\d{4}[a-z]?', '', base_material_name)
+                    
+                    if base_material_name not in consolidated_materials:
+                        consolidated_materials[base_material_name] = {}
+                        
+                    # Merge texture info
+                    for tex_type, tex_info in textures.items():
+                        if tex_type not in consolidated_materials[base_material_name]:
+                            consolidated_materials[base_material_name][tex_type] = tex_info
+                
+                # Create the consolidated materials
+                for material_name, textures in consolidated_materials.items():
                     # Check if material already exists
                     existing_mat = self.check_material_exists(
                         mat_context, material_name
