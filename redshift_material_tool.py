@@ -561,20 +561,33 @@ class RedshiftMaterialTool:
                     # UDIM texture
                     udim_pattern = texture_info["pattern"]
                     filepath = os.path.join(texture_info["path"], udim_pattern)
+
+                    # Set the texture path
                     texture_node.parm("tex0").set(filepath)
 
-                    # Try multiple ways to enable UDIM support depending on Redshift version
+                    # Enable UDIM support - set to "load as sequence"
                     if texture_node.parm("tex0_udim") is not None:
-                        texture_node.parm("tex0_udim").set(1)
-                    elif texture_node.parm("tex0_useudim") is not None:
-                        texture_node.parm("tex0_useudim").set(1)
-                    elif texture_node.parm("tex0_useUDIM") is not None:
-                        texture_node.parm("tex0_useUDIM").set(1)
+                        texture_node.parm("tex0_udim").set(1)  # Enable UDIM
 
-                    # Some Redshift versions use a different approach to UDIMs
-                    if texture_node.parm("tex0_uv_repeat") is not None:
-                        # Don't use default UV tiling with UDIMs
-                        texture_node.parm("tex0_uv_repeat").set(0)
+                    # Set sequence type to UDIM (value 1)
+                    if texture_node.parm("tex0_sequence_type") is not None:
+                        texture_node.parm("tex0_sequence_type").set(1)  # 1 = UDIM
+                    elif texture_node.parm("tex0_sequenceType") is not None:
+                        texture_node.parm("tex0_sequenceType").set(
+                            1
+                        )  # Alternative parameter name
+
+                    # Set to load sequence as one entry
+                    if texture_node.parm("tex0_load_as_sequence") is not None:
+                        texture_node.parm("tex0_load_as_sequence").set(
+                            1
+                        )  # Enable load as sequence
+                    elif texture_node.parm("tex0_loadAsSequence") is not None:
+                        texture_node.parm("tex0_loadAsSequence").set(
+                            1
+                        )  # Alternative parameter name
+
+                    print(f"Set up {tex_type} texture as UDIM sequence")
                 else:
                     # Regular texture
                     texture_node.parm("tex0").set(texture_info["file_path"])
