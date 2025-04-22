@@ -73,6 +73,8 @@ class RedshiftMaterialTool:
             udim_files = [f for f in files if self._is_udim_file(f)]
             if udim_files:
                 print(f"Found potential UDIM files in {root}: {len(udim_files)} files")
+                for f in udim_files[:3]:  # Print first few as examples
+                    print(f"  Example UDIM file: {f}")
 
             # Group files first to detect UDIM patterns
             file_groups = self._group_udim_files(files)
@@ -178,7 +180,7 @@ class RedshiftMaterialTool:
 
                 if base_pattern not in udim_groups:
                     udim_groups[base_pattern] = {
-                        "base_file": self._udim_pattern_to_redshift(base_pattern),
+                        "base_file": base_pattern,
                         "files": [],
                     }
 
@@ -194,16 +196,19 @@ class RedshiftMaterialTool:
 
     def _is_udim_file(self, filename):
         """Check if a file is part of a UDIM sequence"""
-        # Handle direct <UDIM> tag in filename 
+        # Handle Redshift's UDIM format
         if "<UDIM>" in filename:
             return True
-            
-        # UDIM pattern: typically has a 4-digit number like 1001, 1002, etc.
-        # Test for both standard patterns:
-        # - With separators on both sides: texture_1001_diffuse.exr or texture.1001.diffuse.exr
-        # - With separator only at the start: texture_1001.exr or texture.1001.exr
 
-        # Standard UDIM (4 digits)
+        # Handle Houdini's native format
+        if "%(UDIM)d" in filename:
+            return True
+
+        # Substance Painter naming convention: name.1001.exr or name.1001
+        # Format seen in Houdini: name.1001.exr
+        substance_udim = r".*?\.[0-9]{4}(\..+)?$"
+
+        # Standard UDIM (4 digits with separators)
         udim_standard = r".*?([\._])[0-9]{4}([\._].*|$)"
 
         # Mari-style UDIMs (u#_v#)
@@ -211,17 +216,34 @@ class RedshiftMaterialTool:
 
         # Check all patterns with case insensitivity
         return (
-            re.match(udim_standard, filename, re.IGNORECASE) is not None
+            re.match(substance_udim, filename, re.IGNORECASE) is not None
+            or re.match(udim_standard, filename, re.IGNORECASE) is not None
             or re.match(udim_mari, filename, re.IGNORECASE) is not None
         )
 
     def _extract_udim_info(self, filename):
         """Extract the base pattern and UDIM value from a filename"""
-        # Check if <UDIM> is already in the filename 
+        # Check if <UDIM> is already in the filename (Redshift format)
         if "<UDIM>" in filename:
-            # Already has <UDIM> tag - just return it
+            # Already has Redshift UDIM tag - just return it
             return filename, "<UDIM>"
-            
+
+        # Check if %(UDIM)d is in the filename (Houdini native format)
+        if "%(UDIM)d" in filename:
+            # Convert from Houdini to Redshift format
+            return filename.replace("%(UDIM)d", "<UDIM>"), "<UDIM>"
+
+        # Substance Painter naming convention: name.1001.exr
+        substance_match = re.match(
+            r"(.*?)\.([0-9]{4})(\..+)?$", filename, re.IGNORECASE
+        )
+        if substance_match:
+            base, udim, ext = substance_match.groups()
+            # If ext is None, set it to empty string
+            ext = ext or ""
+            # Convert to a pattern with <UDIM> placeholder in Redshift format
+            return f"{base}.<UDIM>{ext}", udim
+
         # Try different UDIM naming conventions
 
         # Mari-style: texture_u1_v1_diffuse.exr
@@ -230,8 +252,13 @@ class RedshiftMaterialTool:
         )
         if mari_match:
             prefix, separator, udim, suffix = mari_match.groups()
-            # Convert to a pattern with <UDIM> placeholder - preserve original separator
-            return f"{prefix}{separator}<UDIM>{suffix}", udim
+            # Convert to dot-based format for Redshift with <UDIM>
+            base_name = prefix
+            if suffix.startswith("_") or suffix.startswith("."):
+                suffix = suffix[1:]
+            ext = os.path.splitext(suffix)[1]
+            clean_suffix = os.path.splitext(suffix)[0]
+            return f"{base_name}_{clean_suffix}.<UDIM>{ext}", udim
 
         # Mari-style at end of filename: texture_diffuse_u1_v1.exr
         mari_end_match = re.match(
@@ -239,8 +266,8 @@ class RedshiftMaterialTool:
         )
         if mari_end_match:
             prefix, separator, udim, ext = mari_end_match.groups()
-            # Convert to a pattern with <UDIM> placeholder
-            return f"{prefix}{separator}<UDIM>{ext}", udim
+            # Convert to Redshift format
+            return f"{prefix}.<UDIM>{ext}", udim
 
         # ZBrush/Standard UDIM: texture_1001_diffuse.exr
         zbrush_match = re.match(
@@ -248,8 +275,13 @@ class RedshiftMaterialTool:
         )
         if zbrush_match:
             prefix, separator, udim, suffix = zbrush_match.groups()
-            # Convert to a pattern with <UDIM> placeholder - preserve original separator
-            return f"{prefix}{separator}<UDIM>{suffix}", udim
+            # Convert to Redshift format
+            base_name = prefix
+            if suffix.startswith("_") or suffix.startswith("."):
+                suffix = suffix[1:]
+            ext = os.path.splitext(suffix)[1]
+            clean_suffix = os.path.splitext(suffix)[0]
+            return f"{base_name}_{clean_suffix}.<UDIM>{ext}", udim
 
         # UDIM at end of filename: texture_diffuse_1001.exr
         udim_end_match = re.match(
@@ -257,30 +289,43 @@ class RedshiftMaterialTool:
         )
         if udim_end_match:
             prefix, separator, udim, ext = udim_end_match.groups()
-            # Convert to a pattern with <UDIM> placeholder
-            return f"{prefix}{separator}<UDIM>{ext}", udim
+            # Convert to Redshift format
+            return f"{prefix}.<UDIM>{ext}", udim
 
         # If no pattern is found, return the filename (shouldn't happen if _is_udim_file is correct)
         return filename, None
-
-    def _udim_pattern_to_redshift(self, pattern):
-        """Convert a UDIM pattern to Redshift's expected format"""
-        # Redshift uses <UDIM> tag in the file path
-        return pattern
 
     def _extract_material_name(self, filename):
         """Extract material name from filename"""
         # Remove extension
         base = os.path.splitext(filename)[0]
 
+        # Handle Substance Painter naming convention: name.1001.exr
+        # Check if there's another dot with 4 digits after it
+        substance_match = re.match(r"(.*?)\.([0-9]{4})$", base)
+        if substance_match:
+            base = substance_match.group(1)
+
         # Remove UDIM part if present (but preserve the base name)
-        # We need to handle the <UDIM> tag case separately
-        if "<UDIM>" in base:
-            # For patterns that already have the <UDIM> tag
+        # We need to handle the UDIM tag cases separately
+        if "%(UDIM)d" in base:
+            # For patterns that have the Houdini UDIM tag
+            base = base.replace("_%(UDIM)d_", "_").replace(".%(UDIM)d.", ".")
+        elif "<UDIM>" in base:
+            # For patterns that have the Redshift UDIM tag
             base = base.replace("_<UDIM>_", "_").replace(".<UDIM>.", ".")
         else:
             # For actual UDIM file names with numbers or Mari style
-            base = re.sub(r"[\._](?:u\d+_v\d+|[0-9]{4})[\._]", "_", base)
+            base = base.replace("_u1_v1_", "_").replace("_u2_v1_", "_")
+            # Remove standard UDIM numbers from within the name
+            if "." in base:
+                parts = base.split(".")
+                cleaned_parts = []
+                for part in parts:
+                    if len(part) == 4 and part.isdigit():
+                        continue
+                    cleaned_parts.append(part)
+                base = ".".join(cleaned_parts)
 
         # Common naming patterns (e.g., "materialName_basecolor")
         pattern = (
@@ -296,17 +341,45 @@ class RedshiftMaterialTool:
 
     def _identify_texture_type(self, filename):
         """Identify texture type from filename"""
-        # Remove UDIM part if present
-        clean_name = re.sub(r"[\._](?:u\d+_v\d+|[0-9]{4})[\._]", "_", filename.lower())
-        base = os.path.splitext(clean_name)[0].lower()
+        # Remove extension
+        filename_no_ext = os.path.splitext(filename)[0]
 
+        # Remove UDIM numbering (for Substance Painter format: name.1001)
+        substance_match = re.match(r"(.*?)\.([0-9]{4})$", filename_no_ext)
+        if substance_match:
+            filename_no_ext = substance_match.group(1)
+
+        # Remove UDIM parts from the name
+        if "%(UDIM)d" in filename_no_ext:
+            filename_no_ext = filename_no_ext.replace("_%(UDIM)d_", "_").replace(
+                ".%(UDIM)d.", "."
+            )
+        elif "<UDIM>" in filename_no_ext:
+            filename_no_ext = filename_no_ext.replace("_<UDIM>_", "_").replace(
+                ".<UDIM>.", "."
+            )
+
+        # Handle standard UDIM numbering
+        parts = filename_no_ext.split(".")
+        clean_parts = []
+        for part in parts:
+            if len(part) == 4 and part.isdigit():
+                continue
+            clean_parts.append(part)
+        clean_name = ".".join(clean_parts)
+
+        # For Substance Painter naming convention: base_Color, base_Normal, etc.
         for tex_type, keywords in self.texture_types.items():
             for keyword in keywords:
-                if f"_{keyword}" in base.lower() or base.lower().endswith(f"{keyword}"):
+                if f"_{keyword}" in clean_name.lower() or clean_name.lower().endswith(
+                    f"{keyword}"
+                ):
                     return tex_type
 
         # Default to basecolor if can't identify
-        if any(base.lower().endswith(ext) for ext in self.texture_extensions):
+        if any(
+            filename_no_ext.lower().endswith(ext) for ext in self.texture_extensions
+        ):
             return "basecolor"
 
         return None
@@ -316,459 +389,33 @@ class RedshiftMaterialTool:
         if mat_context is None:
             return None
 
-        # Sanitize material name for checking - remove any <UDIM> tags or tile numbers
+        # Sanitize material name for checking - remove any UDIM tags or tile numbers
         clean_name = material_name.replace("<UDIM>", "UDIM")
-        clean_name = re.sub(r'\.?\d{4}[a-z]?', '', clean_name)
+        clean_name = clean_name.replace("%(UDIM)d", "UDIM")
 
-    def create_material_context(self):
-        """Create or get the material context, safely handling errors"""
-        try:
-            # Get or create the /mat context first
-            if hou.node("/mat") is None:
-                hou.node("/").createNode("mat", "mat")
+        # Remove UDIM tile numbers at the end (like .1001)
+        if "." in clean_name:
+            parts = clean_name.split(".")
+            if len(parts) >= 2 and parts[-1].isdigit() and len(parts[-1]) == 4:
+                # If the last part is a 4-digit number (UDIM), remove it
+                clean_name = ".".join(parts[:-1])
 
-            return hou.node("/mat")
-
-        except Exception as e:
-            raise Exception(f"Failed to create material context: {str(e)}")
-
-    def create_redshift_material(self, mat_context, material_name, textures):
-        """Create a Redshift material with the given textures"""
-        if mat_context is None:
-            print("No valid material context found")
-            return None
-
-        # Clean up material name - remove any <UDIM> tags which cause node creation problems
-        clean_material_name = material_name.replace("<UDIM>", "UDIM")
-            
-        # Create material node using redshift_vopnet
-        rs_mat_name = f"RS_{clean_material_name}"
-
-        try:
-            # Create the redshift_vopnet node
-            rs_mat = mat_context.createNode("redshift_vopnet", rs_mat_name)
-            print(f"Successfully created material node: {rs_mat.path()}")
-
-            # Find the automatically created material nodes
-            material_node = None
-            redshift_material_node = None
-
-            # Look for automatically created nodes
-            for child in rs_mat.children():
-                if child.type().name() == "redshift::StandardMaterial":
-                    material_node = child
-                    print(f"Found existing StandardMaterial node: {child.name()}")
-                elif child.type().name() == "redshift_material":
-                    redshift_material_node = child
-                    print(f"Found existing redshift_material node: {child.name()}")
-
-            # Create nodes if they don't exist
-            if material_node is None:
-                material_node = rs_mat.createNode(
-                    "redshift::StandardMaterial", "StandardMaterial"
-                )
-                print(f"Created StandardMaterial node")
-
-            if redshift_material_node is None:
-                redshift_material_node = rs_mat.createNode(
-                    "redshift_material", "redshift_material"
-                )
-                print(f"Created redshift_material node")
-
-            # Connect StandardMaterial to redshift_material if not already connected
-            try:
-                # Check if already connected
-                if redshift_material_node.input(0) is None:
-                    # Connect StandardMaterial to redshift_material
-                    redshift_material_node.setInput(0, material_node, 0)
-                    print(f"Connected StandardMaterial to redshift_material")
-            except Exception as e:
-                print(
-                    f"Warning: Failed to connect StandardMaterial to redshift_material: {str(e)}"
-                )
-
-            # Process all texture types (except normal, bump, and displacement)
-            for tex_type, tex_info in textures.items():
-                if tex_type in ["normal", "bump", "displacement"]:
-                    # Skip these - handle them separately
-                    continue
-
-                # Create texture node
-                try:
-                    tex_node = self._create_texture_node(rs_mat, tex_type, tex_info)
-
-                    # Connect texture to material based on type
-                    try:
-                        if tex_type == "basecolor":
-                            material_node.setNamedInput("base_color", tex_node, 0)
-                            print(f"Connected basecolor texture")
-                        elif tex_type == "roughness":
-                            material_node.setNamedInput("refl_roughness", tex_node, 0)
-                            print(f"Connected roughness texture")
-                        elif tex_type == "metallic":
-                            material_node.setNamedInput("metalness", tex_node, 0)
-                            print(f"Connected metallic texture")
-                        elif tex_type == "emission":
-                            material_node.setNamedInput("emission_color", tex_node, 0)
-                            print(f"Connected emission texture")
-                        elif tex_type == "ao":
-                            material_node.setNamedInput("overall_color", tex_node, 0)
-                            print(f"Connected ambient occlusion texture")
-                    except Exception as e:
-                        print(
-                            f"Warning: Failed to connect {tex_type} texture: {str(e)}"
-                        )
-                except Exception as e:
-                    print(
-                        f"Warning: Failed to create {tex_type} texture node: {str(e)}"
-                    )
-
-            # Handle normal and bump maps
-            bump_node = None
-
-            if "normal" in textures or "bump" in textures:
-                try:
-                    # Create bump map node
-                    bump_node = rs_mat.createNode("redshift::BumpMap", "bump_map")
-
-                    # Process normal map
-                    if "normal" in textures:
-                        normal_tex = self._create_texture_node(
-                            rs_mat, "normal", textures["normal"]
-                        )
-
-                        # Set to normal map mode
-                        try:
-                            # First try standard parameter name
-                            if bump_node.parm("inputType") is not None:
-                                bump_node.parm("inputType").set(1)  # 1 = Normal Map
-                            # Try alternative parameter name
-                            elif bump_node.parm("input_type") is not None:
-                                bump_node.parm("input_type").set(1)
-                        except Exception as e:
-                            print(
-                                f"Warning: Could not set bump node to normal map mode: {str(e)}"
-                            )
-
-                        # Set Input Map Type to Tangent-Space Normal
-                        try:
-                            # Try standard parameter name
-                            if bump_node.parm("inputMapType") is not None:
-                                bump_node.parm("inputMapType").set(
-                                    1
-                                )  # 1 = Tangent-Space Normal
-                            # Try alternative parameter name
-                            elif bump_node.parm("input_map_type") is not None:
-                                bump_node.parm("input_map_type").set(1)
-                            # Try another alternative - some Redshift versions use different naming
-                            elif bump_node.parm("normal_map_type") is not None:
-                                bump_node.parm("normal_map_type").set(1)
-                            print("Set normal map to Tangent-Space Normal")
-                        except Exception as e:
-                            print(f"Warning: Could not set normal map type: {str(e)}")
-
-                        # Connect normal texture to bump node
-                        bump_node.setInput(0, normal_tex, 0)
-                        print(f"Connected normal map to bump node")
-
-                    # Process bump map
-                    if "bump" in textures:
-                        bump_tex = self._create_texture_node(
-                            rs_mat, "bump", textures["bump"]
-                        )
-
-                        if "normal" in textures:
-                            # If we already have a normal map, connect bump to input 1
-                            bump_node.setInput(1, bump_tex, 0)
-                            print(f"Connected bump map to bump node input 1")
-                        else:
-                            # Otherwise, set to bump map mode and connect to input 0
-                            try:
-                                bump_node.parm("inputType").set(0)  # 0 = Bump Map
-                            except Exception:
-                                try:
-                                    bump_node.parm("input_type").set(0)
-                                except Exception as e:
-                                    print(
-                                        f"Warning: Could not set bump node to bump map mode: {str(e)}"
-                                    )
-
-                            bump_node.setInput(0, bump_tex, 0)
-                            print(f"Connected bump map to bump node input 0")
-
-                    # REMOVED: Connect bump node to material_node
-                    # material_node.setNamedInput("bump_input", bump_node, 0)
-
-                    # Connect bump node to redshift_material
-                    redshift_material_node.setInput(2, bump_node, 0)
-                    print(f"Connected bump node to redshift_material")
-                except Exception as e:
-                    print(f"Warning: Failed to process normal/bump maps: {str(e)}")
-
-            # Handle displacement
-            if "displacement" in textures:
-                try:
-                    # Create texture node
-                    disp_tex = self._create_texture_node(
-                        rs_mat, "displacement", textures["displacement"]
-                    )
-
-                    # Create displacement node
-                    disp_node = rs_mat.createNode(
-                        "redshift::Displacement", "displacement"
-                    )
-
-                    # Connect texture to displacement node
-                    disp_node.setInput(0, disp_tex, 0)
-                    print(f"Connected displacement texture to displacement node")
-
-                    # Connect displacement node to redshift_material
-                    redshift_material_node.setInput(1, disp_node, 0)
-                    print(f"Connected displacement node to redshift_material")
-                except Exception as e:
-                    print(f"Warning: Failed to process displacement map: {str(e)}")
-
-            # Make sure redshift_material is the output
-            try:
-                # Find the output node
-                output_node = None
-                for child in rs_mat.children():
-                    if child.type().name() == "subnet_output":
-                        output_node = child
-                        break
-
-                # Create output node if it doesn't exist
-                if output_node is None:
-                    # First try standard name
-                    try:
-                        output_node = rs_mat.createNode("subnet_output", "output")
-                    except:
-                        try:
-                            # Try alternative name used in some Houdini versions
-                            output_node = rs_mat.createNode("output", "output")
-                        except Exception as e2:
-                            print(f"Warning: Could not create output node: {str(e2)}")
-                            # Will try to use existing output node
-
-                # Find output node one more time if we couldn't create it
-                if output_node is None:
-                    for child in rs_mat.children():
-                        if child.type().name() == "output" or child.name() == "output":
-                            output_node = child
-                            break
-                
-                # Connect redshift_material to output if we found/created an output node
-                if output_node is not None:
-                    output_node.setInput(0, redshift_material_node, 0)
-                    print(f"Connected redshift_material to output node")
-                else:
-                    print("Warning: Could not find or create output node. Material may not work correctly.")
-            except Exception as e:
-                print(f"Warning: Failed to set up output connection: {str(e)}")
-
-            # Layout the network
-            try:
-                rs_mat.layoutChildren()
-            except Exception as e:
-                print(f"Warning: Could not layout children: {str(e)}")
-
-            return rs_mat
-        except Exception as e:
-            if "rs_mat" in locals():
-                try:
-                    rs_mat.destroy()
-                except:
-                    pass
-            raise Exception(f"Error creating material: {str(e)}")
-
-    def _create_texture_node(self, mat_builder, tex_type, texture_info):
-        """Create a texture node with the given texture info"""
-        try:
-            # Create TextureSampler node
-            texture_node = mat_builder.createNode(
-                "redshift::TextureSampler", f"{tex_type}_texture"
-            )
-
-            # Set texture file path
-            if isinstance(texture_info, dict) and "is_udim" in texture_info:
-                if texture_info["is_udim"]:
-                    # UDIM texture
-                    udim_pattern = texture_info["pattern"]
-                    filepath = os.path.join(texture_info["path"], udim_pattern)
-
-                    # Set the texture path
-                    texture_node.parm("tex0").set(filepath)
-                    
-                    print(f"Setting UDIM texture path: {filepath}")
-
-                    # UDIM flag handling for different Redshift versions
-                    # Try all known parameter names to ensure compatibility
-                    
-                    # 1. Set udim flag
-                    try:
-                        if texture_node.parm("tex0_udim") is not None:
-                            texture_node.parm("tex0_udim").set(1)
-                            print("Set tex0_udim parameter")
-                    except Exception as e:
-                        print(f"Warning: Could not set tex0_udim: {str(e)}")
-
-                    # 2. Set sequence type to UDIM (1)
-                    sequence_type_set = False
-                    for param_name in ["tex0_sequence_type", "tex0_sequenceType"]:
-                        try:
-                            if texture_node.parm(param_name) is not None:
-                                texture_node.parm(param_name).set(1)  # 1 = UDIM
-                                sequence_type_set = True
-                                print(f"Set {param_name} parameter to UDIM (1)")
-                                break
-                        except Exception as e:
-                            print(f"Warning: Could not set {param_name}: {str(e)}")
-                    
-                    # 3. Set "Load as sequence" flag
-                    sequence_load_set = False
-                    for param_name in ["tex0_load_as_sequence", "tex0_loadAsSequence"]:
-                        try:
-                            if texture_node.parm(param_name) is not None:
-                                texture_node.parm(param_name).set(1)
-                                sequence_load_set = True
-                                print(f"Set {param_name} parameter")
-                                break
-                        except Exception as e:
-                            print(f"Warning: Could not set {param_name}: {str(e)}")
-                    
-                    # 4. Check if we set all necessary parameters
-                    if sequence_type_set and sequence_load_set:
-                        print(f"Successfully configured UDIM sequence for {tex_type}")
-                    else:
-                        print(f"Warning: Could not fully configure UDIM sequence for {tex_type}")
-                        
-                    # 5. Additional debug info
-                    print(f"UDIM pattern used: {udim_pattern}")
-                else:
-                    # Regular texture
-                    texture_node.parm("tex0").set(texture_info["file_path"])
-            else:
-                # Legacy format - just a path
-                texture_node.parm("tex0").set(texture_info)
-
-            # Set appropriate color space
-            if texture_node.parm("tex0_colorSpace") is not None:
-                if tex_type in ["basecolor", "emission"]:
-                    texture_node.parm("tex0_colorSpace").set("sRGB")
-                else:
-                    texture_node.parm("tex0_colorSpace").set("Raw")
-
-            # Set up channel extraction for certain texture types
-            if tex_type in ["roughness", "metallic", "ao", "displacement"]:
-                # Set to use a specific color channel (typically R)
-                if texture_node.parm("tex0_useColorChannel") is not None:
-                    texture_node.parm("tex0_useColorChannel").set(1)
-                if texture_node.parm("tex0_channel") is not None:
-                    texture_node.parm("tex0_channel").set(0)  # Use R channel
-
-            print(f"Created {tex_type} texture node")
-            return texture_node
-
-        except Exception as e:
-            raise Exception(f"Error creating texture node for {tex_type}: {str(e)}")
-
-    def run(self):
-        """Main function to run the material creation tool"""
-        try:
-            # First check if Redshift is properly installed
-            rs_ok, rs_message = self.check_redshift_installation()
-            if not rs_ok:
-                raise Exception(f"Redshift check failed: {rs_message}")
-        except Exception as e:
-            raise Exception(f"Error during Redshift installation check: {str(e)}")
-
-            print("Redshift check: OK")
-
-            # Get material context
-            try:
-                mat_context = self.create_material_context()
-            except Exception as e:
-                raise Exception(f"Failed to create material context: {str(e)}")
-
-            # Scan textures
-            material_sets = self.scan_textures()
-
-            if not material_sets:
-                print("No valid texture sets found")
-                return
-
-            # Create materials
-            created_count = 0
-            existed_count = 0
-
-            # Process material sets by mesh
-            for mesh_name, materials in material_sets.items():
-                print(f"Processing materials for mesh: {mesh_name}")
-                
-                # Group UDIM textures of the same material type together
-                consolidated_materials = {}
-                
-                for material_name, textures in materials.items():
-                    # Check if this is a UDIM material by checking if "<UDIM>" is in the name
-                    base_material_name = material_name.replace("<UDIM>", "UDIM")
-                    
-                    # Strip any UDIM tile numbers from the name (like .1001e)
-                    # This helps consolidate materials that are detected as individual tiles
-                    base_material_name = re.sub(r'\.?\d{4}[a-z]?', '', base_material_name)
-
-                        
-                    if base_material_name not in consolidated_materials:
-                        consolidated_materials[base_material_name] = {}
-                        
-                    # Merge texture info
-                    for tex_type, tex_info in textures.items():
-                        if tex_type not in consolidated_materials[base_material_name]:
-                            consolidated_materials[base_material_name][tex_type] = tex_info
-                
-                # Create the consolidated materials
-                for material_name, textures in consolidated_materials.items():
-                    # Check if material already exists
-                    existing_mat = self.check_material_exists(
-                        mat_context, material_name
-                    )
-
-                    if existing_mat:
-                        print(f"  Material already exists: {material_name}")
-                        existed_count += 1
-                    else:
-                        try:
-                            # Create new material
-                            new_mat = self.create_redshift_material(
-                                mat_context, material_name, textures
-                            )
-                            if new_mat:
-                                print(f"  Created new material: {material_name}")
-                                created_count += 1
-                        except Exception as e:
-                            print(
-                                f"  Error creating material {material_name}: {str(e)}"
-                            )
-
-            print(
-                f"Summary: Created {created_count} new materials, {existed_count} already existed"
-            )
-
-            # Layout nodes in material context
-            mat_context.layoutChildren()
-          
         # Check for existing material with various possible names
         for node in mat_context.children():
             node_name = node.name()
             # Remove any RS_ prefix for comparison
             if node_name.startswith("RS_"):
                 node_name = node_name[3:]
-                
+
             # Check if the base names match (ignoring UDIM parts)
             if node_name == clean_name or node_name == material_name:
                 return node
-            
+
             # Also check with RS_ prefix
-            if node.name() == f"RS_{clean_name}" or node.name() == f"RS_{material_name}":
+            if (
+                node.name() == f"RS_{clean_name}"
+                or node.name() == f"RS_{material_name}"
+            ):
                 return node
 
         return None
@@ -791,9 +438,17 @@ class RedshiftMaterialTool:
             print("No valid material context found")
             return None
 
-        # Clean up material name - remove any <UDIM> tags which cause node creation problems
+        # Clean up material name - remove any UDIM tags which cause node creation problems
         clean_material_name = material_name.replace("<UDIM>", "UDIM")
-            
+        clean_material_name = clean_material_name.replace("%(UDIM)d", "UDIM")
+
+        # Remove UDIM tile numbers at the end (like .1001)
+        if "." in clean_material_name:
+            parts = clean_material_name.split(".")
+            if len(parts) >= 2 and parts[-1].isdigit() and len(parts[-1]) == 4:
+                # If the last part is a 4-digit number (UDIM), remove it
+                clean_material_name = ".".join(parts[:-1])
+
         # Create material node using redshift_vopnet
         rs_mat_name = f"RS_{clean_material_name}"
 
@@ -1009,21 +664,17 @@ class RedshiftMaterialTool:
                         if child.type().name() == "output" or child.name() == "output":
                             output_node = child
                             break
-                
+
                 # Connect redshift_material to output if we found/created an output node
                 if output_node is not None:
                     output_node.setInput(0, redshift_material_node, 0)
                     print(f"Connected redshift_material to output node")
                 else:
-                    print("Warning: Could not find or create output node. Material may not work correctly.")
+                    print(
+                        "Warning: Could not find or create output node. Material may not work correctly."
+                    )
             except Exception as e:
                 print(f"Warning: Failed to set up output connection: {str(e)}")
-
-            # Layout the network
-            try:
-                rs_mat.layoutChildren()
-            except Exception as e:
-                print(f"Warning: Could not layout children: {str(e)}")
 
             return rs_mat
         except Exception as e:
@@ -1047,16 +698,31 @@ class RedshiftMaterialTool:
                 if texture_info["is_udim"]:
                     # UDIM texture
                     udim_pattern = texture_info["pattern"]
-                    filepath = os.path.join(texture_info["path"], udim_pattern)
+
+                    # Convert %(UDIM)d to <UDIM> if necessary
+                    if "%(UDIM)d" in udim_pattern:
+                        udim_pattern = udim_pattern.replace("%(UDIM)d", "<UDIM>")
+
+                    # Get the relative path from the project directory
+                    rel_path = os.path.relpath(texture_info["path"], self.project_path)
+
+                    # Construct a $HIP-based path
+                    if rel_path.startswith("tex"):
+                        filepath = f"$HIP/{rel_path}/{udim_pattern}"
+                    else:
+                        filepath = f"$HIP/{rel_path}/{udim_pattern}"
+
+                    # Replace backslashes with forward slashes for Houdini
+                    filepath = filepath.replace("\\", "/")
 
                     # Set the texture path
                     texture_node.parm("tex0").set(filepath)
-                    
+
                     print(f"Setting UDIM texture path: {filepath}")
 
-                    # UDIM flag handling for different Redshift versions
+                    # For Redshift's UDIM format, we need to enable the UDIM flags
                     # Try all known parameter names to ensure compatibility
-                    
+
                     # 1. Set udim flag
                     try:
                         if texture_node.parm("tex0_udim") is not None:
@@ -1076,7 +742,7 @@ class RedshiftMaterialTool:
                                 break
                         except Exception as e:
                             print(f"Warning: Could not set {param_name}: {str(e)}")
-                    
+
                     # 3. Set "Load as sequence" flag
                     sequence_load_set = False
                     for param_name in ["tex0_load_as_sequence", "tex0_loadAsSequence"]:
@@ -1088,21 +754,51 @@ class RedshiftMaterialTool:
                                 break
                         except Exception as e:
                             print(f"Warning: Could not set {param_name}: {str(e)}")
-                    
+
                     # 4. Check if we set all necessary parameters
                     if sequence_type_set and sequence_load_set:
                         print(f"Successfully configured UDIM sequence for {tex_type}")
                     else:
-                        print(f"Warning: Could not fully configure UDIM sequence for {tex_type}")
-                        
-                    # 5. Additional debug info
+                        print(
+                            f"Warning: Could not fully configure UDIM sequence for {tex_type}"
+                        )
+
+                    # 5. Additional debug info - show the Redshift format
                     print(f"UDIM pattern used: {udim_pattern}")
                 else:
-                    # Regular texture
-                    texture_node.parm("tex0").set(texture_info["file_path"])
+                    # Regular texture (non-UDIM)
+                    # Get the relative path from the project directory
+                    rel_path = os.path.relpath(
+                        os.path.dirname(texture_info["file_path"]), self.project_path
+                    )
+
+                    # Construct a $HIP-based path
+                    filename = os.path.basename(texture_info["file_path"])
+                    if rel_path.startswith("tex"):
+                        filepath = f"$HIP/{rel_path}/{filename}"
+                    else:
+                        filepath = f"$HIP/{rel_path}/{filename}"
+
+                    # Replace backslashes with forward slashes for Houdini
+                    filepath = filepath.replace("\\", "/")
+
+                    texture_node.parm("tex0").set(filepath)
             else:
-                # Legacy format - just a path
-                texture_node.parm("tex0").set(texture_info)
+                # Legacy format - just a path - try to convert to $HIP if possible
+                try:
+                    path_str = str(texture_info)
+                    if os.path.isabs(path_str):
+                        rel_path = os.path.relpath(
+                            os.path.dirname(path_str), self.project_path
+                        )
+                        filename = os.path.basename(path_str)
+                        filepath = f"$HIP/{rel_path}/{filename}".replace("\\", "/")
+                        texture_node.parm("tex0").set(filepath)
+                    else:
+                        texture_node.parm("tex0").set(texture_info)
+                except:
+                    # Fall back to original path if conversion fails
+                    texture_node.parm("tex0").set(texture_info)
 
             # Set appropriate color space
             if texture_node.parm("tex0_colorSpace") is not None:
@@ -1152,29 +848,106 @@ class RedshiftMaterialTool:
             created_count = 0
             existed_count = 0
 
+            # Debug output
+            if material_sets:
+                print("DEBUG: Found material sets:")
+                for mesh_name, materials in material_sets.items():
+                    print(f"  Mesh: {mesh_name}")
+                    for material_name, textures in materials.items():
+                        print(f"    Material: {material_name}")
+                        print(f"    Textures: {list(textures.keys())}")
+                        # Debug texture paths
+                        for tex_type, tex_info in textures.items():
+                            if (
+                                isinstance(tex_info, dict)
+                                and "is_udim" in tex_info
+                                and tex_info["is_udim"]
+                            ):
+                                print(
+                                    f"      {tex_type}: {tex_info['pattern']} (UDIM sequence)"
+                                )
+                            elif isinstance(tex_info, dict) and "file_path" in tex_info:
+                                print(f"      {tex_type}: {tex_info['file_path']}")
+                            else:
+                                print(f"      {tex_type}: {tex_info}")
+
             # Process material sets by mesh
             for mesh_name, materials in material_sets.items():
                 print(f"Processing materials for mesh: {mesh_name}")
-                
+
                 # Group UDIM textures of the same material type together
                 consolidated_materials = {}
-                
+
                 for material_name, textures in materials.items():
-                    # Check if this is a UDIM material by checking if "<UDIM>" is in the name
-                    base_material_name = material_name.replace("<UDIM>", "UDIM")
-                    
-                    # Strip any UDIM tile numbers from the name (like .1001e)
-                    # This helps consolidate materials that are detected as individual tiles
-                    base_material_name = re.sub(r'\.?\d{4}[a-z]?', '', base_material_name)
-                    
+                    # Clean material name: replace UDIM tags and remove tile numbers
+                    base_material_name = material_name.replace("%(UDIM)d", "UDIM")
+                    base_material_name = base_material_name.replace("<UDIM>", "UDIM")
+
+                    # Remove UDIM tile numbers at the end (like .1001)
+                    if "." in base_material_name:
+                        parts = base_material_name.split(".")
+                        if (
+                            len(parts) >= 2
+                            and parts[-1].isdigit()
+                            and len(parts[-1]) == 4
+                        ):
+                            # If the last part is a 4-digit number (UDIM), remove it
+                            base_material_name = ".".join(parts[:-1])
+
+                    # For Substance Painter naming convention
+                    if "." in base_material_name:
+                        parts = base_material_name.split(".")
+                        for i, part in enumerate(parts):
+                            if part.isdigit() and len(part) == 4:
+                                # Found a UDIM number, remove it
+                                base_material_name = ".".join(
+                                    parts[:i] + parts[i + 1 :]
+                                )
+                                break
+
+                    # Extract the base material name without texture type
+                    # For example: "BarBase_Bar_combo" from "BarBase_Bar_combo_Color.UDIM"
+                    for tex_type, keywords in self.texture_types.items():
+                        for keyword in keywords:
+                            if f"_{keyword}" in base_material_name.lower():
+                                # Split at the texture type
+                                parts = base_material_name.lower().split(f"_{keyword}")
+                                if parts and parts[0]:
+                                    base_material_name = parts[0]
+                                break
+
+                    # Create base material entry if needed
                     if base_material_name not in consolidated_materials:
                         consolidated_materials[base_material_name] = {}
-                        
+
                     # Merge texture info
                     for tex_type, tex_info in textures.items():
                         if tex_type not in consolidated_materials[base_material_name]:
-                            consolidated_materials[base_material_name][tex_type] = tex_info
-                
+                            consolidated_materials[base_material_name][
+                                tex_type
+                            ] = tex_info
+
+                # Debug output
+                if consolidated_materials:
+                    print("DEBUG: Consolidated materials:")
+                    for material_name, textures in consolidated_materials.items():
+                        print(f"  Material: {material_name}")
+                        print(f"  Textures: {list(textures.keys())}")
+                        # Debug texture paths
+                        for tex_type, tex_info in textures.items():
+                            if (
+                                isinstance(tex_info, dict)
+                                and "is_udim" in tex_info
+                                and tex_info["is_udim"]
+                            ):
+                                print(
+                                    f"    {tex_type}: {tex_info['pattern']} (UDIM sequence)"
+                                )
+                            elif isinstance(tex_info, dict) and "file_path" in tex_info:
+                                print(f"    {tex_type}: {tex_info['file_path']}")
+                            else:
+                                print(f"    {tex_type}: {tex_info}")
+
                 # Create the consolidated materials
                 for material_name, textures in consolidated_materials.items():
                     # Check if material already exists
@@ -1199,12 +972,16 @@ class RedshiftMaterialTool:
                                 f"  Error creating material {material_name}: {str(e)}"
                             )
 
+            # Print summary
             print(
                 f"Summary: Created {created_count} new materials, {existed_count} already existed"
             )
 
             # Layout nodes in material context
-            mat_context.layoutChildren()
+            try:
+                mat_context.layoutChildren()
+            except Exception as e:
+                print(f"Warning: Could not layout children: {str(e)}")
 
         except Exception as e:
             error_message = f"Error running Redshift Material Tool: {str(e)}"
