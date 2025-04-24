@@ -446,8 +446,7 @@ class RedshiftMaterialTool:
         """Identify texture type from filename with improved UDIM handling"""
         # Remove extension
         filename_no_ext = os.path.splitext(filename)[0]
-        original_name = filename_no_ext
-
+        
         print(f"Identifying texture type for: {filename_no_ext}")
 
         # Remove UDIM numbering (for Substance Painter format: name.1001)
@@ -492,11 +491,11 @@ class RedshiftMaterialTool:
 
         # Special handling for certain types by exact string match
         if "alpha" in clean_name:
-            print(f"  Identified as: alpha texture")
+            print("  Identified as: alpha texture")
             return "alpha"
 
         if "translucency" in clean_name or "translucent" in clean_name:
-            print(f"  Identified as: translucency texture")
+            print("  Identified as: translucency texture")
             return "translucency"
 
         # For Substance Painter naming convention: base_Color, base_Normal, etc.
@@ -508,7 +507,7 @@ class RedshiftMaterialTool:
                     return tex_type
 
         # If we can't identify a specific type, assume it's basecolor
-        print(f"  No specific type identified, defaulting to: basecolor")
+        print("  No specific type identified, defaulting to: basecolor")
         return "basecolor"
 
     def check_material_exists(self, mat_context, material_name):
@@ -611,13 +610,13 @@ class RedshiftMaterialTool:
                 material_node = rs_mat.createNode(
                     "redshift::StandardMaterial", "StandardMaterial"
                 )
-                print(f"Created StandardMaterial node")
+                print("Created StandardMaterial node")
 
             if redshift_material_node is None:
                 redshift_material_node = rs_mat.createNode(
                     "redshift_material", "redshift_material"
                 )
-                print(f"Created redshift_material node")
+                print("Created redshift_material node")
 
             # Connect StandardMaterial to redshift_material if not already connected
             try:
@@ -625,7 +624,7 @@ class RedshiftMaterialTool:
                 if redshift_material_node.input(0) is None:
                     # Connect StandardMaterial to redshift_material
                     redshift_material_node.setInput(0, material_node, 0)
-                    print(f"Connected StandardMaterial to redshift_material")
+                    print("Connected StandardMaterial to redshift_material")
             except Exception as e:
                 print(
                     f"Warning: Failed to connect StandardMaterial to redshift_material: {str(e)}"
@@ -645,26 +644,26 @@ class RedshiftMaterialTool:
                     try:
                         if tex_type == "basecolor":
                             material_node.setNamedInput("base_color", tex_node, 0)
-                            print(f"Connected basecolor texture")
+                            print("Connected basecolor texture")
                         elif tex_type == "roughness":
                             material_node.setNamedInput("refl_roughness", tex_node, 0)
-                            print(f"Connected roughness texture")
+                            print("Connected roughness texture")
                         elif tex_type == "metallic":
                             material_node.setNamedInput("metalness", tex_node, 0)
-                            print(f"Connected metallic texture")
+                            print("Connected metallic texture")
                         elif tex_type == "emission":
                             material_node.setNamedInput("emission_color", tex_node, 0)
-                            print(f"Connected emission texture")
+                            print("Connected emission texture")
                         elif tex_type == "ao":
                             material_node.setNamedInput("overall_color", tex_node, 0)
-                            print(f"Connected ambient occlusion texture")
+                            print("Connected ambient occlusion texture")
                         elif tex_type == "translucency":
                             material_node.setNamedInput("transl_color", tex_node, 0)
                             material_node.setNamedInput("transl_weight", tex_node, 0)
-                            print(f"Connected translucency texture")
+                            print("Connected translucency texture")
                         elif tex_type == "alpha":
                             material_node.setNamedInput("opacity_color", tex_node, 0)
-                            print(f"Connected alpha texture")
+                            print("Connected alpha texture")
                     except Exception as e:
                         print(
                             f"Warning: Failed to connect {tex_type} texture: {str(e)}"
@@ -693,13 +692,13 @@ class RedshiftMaterialTool:
                         try:
                             if bump_node.parm("inputType") is not None:
                                 bump_node.parm("inputType").set(1)  # 1 = Normal Map
-                        except:
+                        except Exception:
                             pass
 
                         try:
                             if bump_node.parm("input_type") is not None:
                                 bump_node.parm("input_type").set(1)
-                        except:
+                        except Exception:
                             pass
 
                         # Set Input Map Type to Tangent-Space Normal
@@ -708,26 +707,26 @@ class RedshiftMaterialTool:
                                 bump_node.parm("inputMapType").set(
                                     1
                                 )  # 1 = Tangent-Space Normal
-                        except:
+                        except Exception:
                             pass
 
                         try:
                             if bump_node.parm("input_map_type") is not None:
                                 bump_node.parm("input_map_type").set(1)
-                        except:
+                        except Exception:
                             pass
 
                         try:
                             if bump_node.parm("normal_map_type") is not None:
                                 bump_node.parm("normal_map_type").set(1)
-                        except:
+                        except Exception:
                             pass
 
                         print("Set normal map to Tangent-Space Normal")
 
                         # Connect normal texture to bump node
                         bump_node.setInput(0, normal_tex, 0)
-                        print(f"Connected normal map to bump node")
+                        print("Connected normal map to bump node")
 
                     # Process bump map
                     if "bump" in textures:
@@ -738,23 +737,23 @@ class RedshiftMaterialTool:
                         if "normal" in textures:
                             # If we already have a normal map, connect bump to input 1
                             bump_node.setInput(1, bump_tex, 0)
-                            print(f"Connected bump map to bump node input 1")
+                            print("Connected bump map to bump node input 1")
                         else:
                             # Otherwise, set to bump map mode and connect to input 0
                             try:
                                 bump_node.parm("inputType").set(0)  # 0 = Bump Map
-                            except:
+                            except Exception:
                                 try:
                                     bump_node.parm("input_type").set(0)
-                                except:
+                                except Exception:
                                     pass  # Just continue if can't set parameter
 
                             bump_node.setInput(0, bump_tex, 0)
-                            print(f"Connected bump map to bump node input 0")
+                            print("Connected bump map to bump node input 0")
 
                     # Connect bump node to material_node
                     material_node.setNamedInput("bump_input", bump_node, 0)
-                    print(f"Connected bump node to material")
+                    print("Connected bump node to material")
                 except Exception as e:
                     print(f"Warning: Failed to process normal/bump maps: {str(e)}")
 
@@ -773,11 +772,11 @@ class RedshiftMaterialTool:
 
                     # Connect texture to displacement node
                     disp_node.setInput(0, disp_tex, 0)
-                    print(f"Connected displacement texture to displacement node")
+                    print("Connected displacement texture to displacement node")
 
                     # Connect displacement node to redshift_material
                     redshift_material_node.setInput(1, disp_node, 0)
-                    print(f"Connected displacement node to redshift_material")
+                    print("Connected displacement node to redshift_material")
                 except Exception as e:
                     print(f"Warning: Failed to process displacement map: {str(e)}")
 
@@ -808,7 +807,7 @@ class RedshiftMaterialTool:
                 # Connect redshift_material to output if we found/created an output node
                 if output_node is not None:
                     output_node.setInput(0, redshift_material_node, 0)
-                    print(f"Connected redshift_material to output node")
+                    print("Connected redshift_material to output node")
                 else:
                     print(
                         "Warning: Could not find or create output node. Material may not work correctly."
@@ -821,7 +820,7 @@ class RedshiftMaterialTool:
             if "rs_mat" in locals():
                 try:
                     rs_mat.destroy()
-                except:
+                except Exception:
                     pass
             raise Exception(f"Error creating material: {str(e)}")
 
@@ -936,7 +935,7 @@ class RedshiftMaterialTool:
                         texture_node.parm("tex0").set(filepath)
                     else:
                         texture_node.parm("tex0").set(texture_info)
-                except:
+                except Exception:
                     # Fall back to original path if conversion fails
                     texture_node.parm("tex0").set(texture_info)
 

@@ -1,478 +1,363 @@
 """
-Houdini Material Browser Tool
------------------------------
-A tool that scans Redshift materials in a Houdini project and displays
-them in a grid layout with preview renders.
+Houdini Material Browser with Integrated Importer
+-----------------------------------------------
+A tool that can both browse existing materials and import new ones
+from external texture folders.
 """
 
 import hou
 import os
-import re
-import tempfile
-import time
+import shutil
 from PySide2 import QtCore, QtWidgets, QtGui
 
 
-class MaterialPreviewGenerator:
-    """Class to handle creating preview renders of materials"""
-
-    def __init__(self):
-        self.preview_size = 256
-        self.temp_dir = tempfile.gettempdir()
-
-        # Check if Redshift is available
-        self.redshift_available = self._check_redshift_available()
-
-    def _check_redshift_available(self):
-        """Check if Redshift is available in this Houdini installation"""
-        try:
-            # Check for Redshift node types
-            redshift_nodes = [
-                nt
-                for nt in hou.nodeTypeCategories()["Vop"].nodeTypes().values()
-                if "redshift" in nt.name().lower()
-            ]
-
-            # Also check in ROP category
-            rop_redshift = hou.nodeType(hou.ropNodeTypeCategory(), "Redshift_ROP")
-
-            # If we found Redshift nodes or ROP, it's available
-            return len(redshift_nodes) > 0 or rop_redshift is not None
-        except:
-            return False
-
-    def setup_preview_scene(self):
-        """Create a temporary scene for rendering material previews"""
-        # Store current scene state
-        current_desktop = hou.ui.curDesktop()
-        current_scene_viewer = current_desktop.paneTabOfType(
-            hou.paneTabType.SceneViewer
-        )
-
-        # Clean up any existing preview nodes first (in case of previous errors)
-        self.cleanup_existing_preview_nodes()
-
-        # Create preview objects
-        preview_obj = hou.node("/obj").createNode("geo", "preview_sphere")
-
-        # Instead of trying to delete the default file1 node (which may not exist),
-        # just create our sphere directly
-        sphere = preview_obj.createNode("sphere", "preview_sphere_geo")
-        sphere.parm("type").set(0)  # Set to polygon sphere
-        sphere.parm("radx").set(1.0)
-        sphere.parm("rady").set(1.0)
-        sphere.parm("radz").set(1.0)
-        sphere.parm("rows").set(32)
-        sphere.parm("cols").set(32)
-
-        # Make sure the sphere is connected to the output
-        output_node = None
-        for node in preview_obj.children():
-            if node.type().name() == "null" and node.name() == "OUT":
-                output_node = node
-                break
-
-        if not output_node:
-            output_node = preview_obj.createNode("null", "OUT")
-
-        output_node.setInput(0, sphere)
-
-        # Create a camera for consistent viewing
-        cam = hou.node("/obj").createNode("cam", "preview_cam")
-        cam.parmTuple("t").set((0, 0, 4))  # Position camera
-        cam.parm("focal").set(50)  # 50mm lens
-
-        # Create lights
-        key_light = hou.node("/obj").createNode("hlight", "key_light")
-        key_light.parmTuple("t").set((3, 3, 5))
-        key_light.parm("light_intensity").set(1.5)
-
-        fill_light = hou.node("/obj").createNode("hlight", "fill_light")
-        fill_light.parmTuple("t").set((-4, 1, 3))
-        fill_light.parm("light_intensity").set(0.7)
-
-        rim_light = hou.node("/obj").createNode("hlight", "rim_light")
-        rim_light.parmTuple("t").set((0, -3, -5))
-        rim_light.parm("light_intensity").set(1.0)
-
-        # Return the sphere for material assignment
-        return preview_obj, cam
-
-    def cleanup_existing_preview_nodes(self):
-        """Clean up any existing preview nodes to avoid conflicts"""
-        for node_path in [
-            "/obj/preview_sphere",
-            "/obj/preview_cam",
-            "/obj/key_light",
-            "/obj/fill_light",
-            "/obj/rim_light",
-        ]:
-            node = hou.node(node_path)
-            if node:
-                try:
-                    node.destroy()
-                except:
-                    pass
-
-        # Also clean up any preview ROPs in /out
-        out_node = hou.node("/out")
-        if out_node:
-            for child in out_node.children():
-                if child.name().startswith("preview_"):
-                    try:
-                        child.destroy()
-                    except:
-                        pass
-
-    def generate_preview(self, material_node, preview_obj, camera):
-        """Generate a preview image for a given material"""
-        try:
-            material_path = material_node.path()
-            material_name = material_node.name()
-
-            # Create a safe name for the output file
-            safe_name = re.sub(r'[\\/*?:"<>|]', "_", material_name)
-
-            # Assign material to preview object
-            if not preview_obj.parm("shop_materialpath"):
-                print(f"Error: Preview object missing 'shop_materialpath' parameter")
-                return None
-
-            preview_obj.parm("shop_materialpath").set(material_path)
-
-            # Set up Redshift render settings
-            out_node = hou.node("/out")
-            if not out_node:
-                print("Error: Unable to find /out context")
-                return None
-
-            # Check if Redshift_ROP node type exists
-            redshift_rop_type = hou.nodeType(hou.ropNodeTypeCategory(), "Redshift_ROP")
-            if not redshift_rop_type:
-                print("Error: Redshift_ROP node type not found. Is Redshift installed?")
-                return None
-
-            # Create the ROP node
-            rop_name = f"preview_{safe_name}"
-            rop = out_node.createNode("Redshift_ROP", rop_name)
-
-            # Set camera parameter
-            camera_param_names = ["RS_renderCamera", "camera", "RS_camera"]
-            camera_set = False
-            for param_name in camera_param_names:
-                if rop.parm(param_name):
-                    rop.parm(param_name).set(camera.path())
-                    camera_set = True
-                    break
-
-            if not camera_set:
-                print("Error: Could not find camera parameter in Redshift ROP")
-                rop.destroy()
-                return None
-
-            # Enable resolution override
-            if rop.parm("RS_overrideCameraRes"):
-                rop.parm("RS_overrideCameraRes").set(1)
-            elif rop.parm("override_camerares"):
-                rop.parm("override_camerares").set(1)
-
-            # Set resolution
-            if rop.parm("RS_overrideRes1"):
-                rop.parm("RS_overrideRes1").set(self.preview_size)
-            elif rop.parm("res_overridex"):
-                rop.parm("res_overridex").set(self.preview_size)
-
-            if rop.parm("RS_overrideRes2"):
-                rop.parm("RS_overrideRes2").set(self.preview_size)
-            elif rop.parm("res_overridey"):
-                rop.parm("res_overridey").set(self.preview_size)
-
-            # Set output path
-            output_path = os.path.join(
-                tempfile.gettempdir(), f"{safe_name}_preview.jpg"
-            )
-
-            if rop.parm("RS_outputFileNamePrefix"):
-                rop.parm("RS_outputFileNamePrefix").set(output_path)
-            elif rop.parm("vm_picture"):
-                rop.parm("vm_picture").set(output_path)
-
-            # Set output format to JPG - use the correct parameter value
-            if rop.parm("RS_outputFileFormat"):
-                try:
-                    # The parameter takes an integer value, not a string
-                    # 0 = EXR, 1 = TGA, 2 = PNG, 3 = TIFF, 4 = JPG
-                    rop.parm("RS_outputFileFormat").set(4)  # JPG
-                except:
-                    print("Warning: Could not set output format to JPG")
-
-            # Set JPG compression
-            if rop.parm("RS_outputJpgCompression"):
-                rop.parm("RS_outputJpgCompression").set(90)  # 90% quality
-
-            # Reduce quality settings for faster renders
-            if rop.parm("UnifiedMinSamples"):
-                rop.parm("UnifiedMinSamples").set(1)
-
-            if rop.parm("UnifiedMaxSamples"):
-                rop.parm("UnifiedMaxSamples").set(8)  # Reduced from 16
-
-            # Enable progressive rendering for faster feedback
-            if rop.parm("ProgressiveRenderingEnabled"):
-                rop.parm("ProgressiveRenderingEnabled").set(1)
-
-            if rop.parm("ProgressiveRenderingNumPasses"):
-                rop.parm("ProgressiveRenderingNumPasses").set(
-                    4
-                )  # Quick progressive pass
-
-            # Set lower quality settings for preview
-            if rop.parm("RS_easyBucketQuality"):
-                rop.parm("RS_easyBucketQuality").set(0)  # Low quality for speed
-
-            # Disable denoising for faster renders
-            if rop.parm("RS_denoisingEnabled"):
-                rop.parm("RS_denoisingEnabled").set(0)
-
-            # Adaptive sampling settings to speed up renders
-            if rop.parm("UnifiedAdaptiveErrorThreshold"):
-                rop.parm("UnifiedAdaptiveErrorThreshold").set(
-                    0.1
-                )  # Increase threshold for faster (but noisier) results
-
-            # Enable automatic sampling for efficiency
-            if rop.parm("EnableAutomaticSampling"):
-                rop.parm("EnableAutomaticSampling").set(1)
-
-            # Render
-            render_param = rop.parm("execute")
-            if not render_param:
-                print("Error: 'execute' parameter not found in Redshift ROP")
-                rop.destroy()
-                return None
-
-            # Render and wait with better timeout handling
-            render_param.pressButton()
-
-            # Increased timeout to 120 seconds for complex materials
-            timeout = 120
-            start_time = time.time()
-
-            # Check for file with small delays to reduce load
-            while not os.path.exists(output_path):
-                time.sleep(0.5)  # Check every half second
-
-                # Check if render is still in progress
-                if time.time() - start_time > timeout:
-                    print(f"Error: Render timeout for {material_name}")
-                    break
-
-            # Clean up ROP node
-            rop.destroy()
-
-            # Check if the file was created
-            if os.path.exists(output_path):
-                # Wait a bit for file to be fully written
-                time.sleep(0.5)
-                return output_path
-            else:
-                print(f"Error: Render failed to create output file for {material_name}")
-                return None
-
-        except Exception as e:
-            import traceback
-
-            traceback.print_exc()
-            print(f"Error generating preview for {material_node.name()}: {str(e)}")
-            # Try to clean up ROP node if it exists
-            if "rop" in locals():
-                try:
-                    rop.destroy()
-                except:
-                    pass
-            return None
-
-    def cleanup_preview_scene(self, preview_obj, camera):
-        """Clean up temporary preview scene nodes"""
-        for node in hou.node("/obj").children():
-            if node.name().startswith(
-                ("preview_", "key_light", "fill_light", "rim_light")
-            ):
-                node.destroy()
-
-
 class MaterialBrowserWidget(QtWidgets.QMainWindow):
-    """Widget for displaying and browsing materials"""
+    """Widget for displaying and browsing materials with import functionality"""
 
     def __init__(self, parent=None):
         super(MaterialBrowserWidget, self).__init__(parent)
-        self.setWindowTitle("Houdini Material Browser")
-        self.resize(900, 600)
-        self.setWindowFlags(QtCore.Qt.Window)  # Make it a separate window
+        self.setWindowTitle("Material Browser & Importer")
+        self.resize(1100, 700)
+        self.setWindowFlags(QtCore.Qt.Window)
 
         # Create central widget
         self.central_widget = QtWidgets.QWidget()
         self.setCentralWidget(self.central_widget)
 
+        # Material data
+        self.materials = []
+        self.material_icons = {}
+        self.texture_folders = {}  # For import functionality
+        self.preview_icons = {}  # For import functionality
+
+        # Get project path
+        self.project_path = hou.text.expandString("$HIP")
+        self.tex_path = os.path.join(self.project_path, "tex")
+        self.source_tex_path = ""
+        self.current_mode = "browser"  # "browser" or "importer"
+
+        # Import the Redshift material tool
+        self.material_tool = None
+        self.import_material_tool()
+
         # Create the UI
         self.create_ui()
 
-        # Material data
-        self.materials = []
-        self.material_previews = {}
-        self.preview_generator = MaterialPreviewGenerator()
+    def import_material_tool(self):
+        """Import the Redshift material tool"""
+        try:
+            import redshift_material_tool_v2
 
-    def filter_materials(self, filter_text):
-        """Filter materials based on the filter text"""
-        # Clear the grid layout
-        self.clear_grid_layout()
-
-        # If no filter text, show all materials
-        if not filter_text:
-            self.populate_grid()
-            return
-
-        # Filter materials by name
-        filtered_materials = []
-        for material in self.materials:
-            if filter_text.lower() in material.name().lower():
-                filtered_materials.append(material)
-
-        # Repopulate grid with filtered materials
-        columns = 4  # Number of columns in the grid
-
-        for index, material in enumerate(filtered_materials):
-            row = index // columns
-            col = index % columns
-
-            # Create material cell widget
-            cell = self.create_material_cell(material)
-            self.grid_layout.addWidget(cell, row, col)
-
-        # Update status
-        self.status_bar.showMessage(
-            f"Showing {len(filtered_materials)} of {len(self.materials)} materials"
-        )
+            self.material_tool = redshift_material_tool_v2.RedshiftMaterialTool()
+            print("Successfully imported Redshift material tool")
+        except ImportError:
+            print("Could not import Redshift material tool")
 
     def create_ui(self):
         """Create the user interface"""
         main_layout = QtWidgets.QVBoxLayout(self.central_widget)
 
-        # Menu bar
-        menu_bar = self.menuBar()
-        file_menu = menu_bar.addMenu("File")
+        # Create tab widget for browser and importer
+        self.tab_widget = QtWidgets.QTabWidget()
 
-        # Add actions to file menu
-        refresh_action = QtWidgets.QAction("Refresh Materials", self)
-        refresh_action.triggered.connect(self.scan_materials)
-        file_menu.addAction(refresh_action)
+        # Create browser tab
+        browser_widget = QtWidgets.QWidget()
+        browser_layout = QtWidgets.QVBoxLayout(browser_widget)
+        self.create_browser_ui(browser_layout)
+        self.tab_widget.addTab(browser_widget, "Browse Materials")
 
-        generate_action = QtWidgets.QAction("Generate All Previews", self)
-        generate_action.triggered.connect(self.generate_all_previews)
-        file_menu.addAction(generate_action)
+        # Create importer tab
+        importer_widget = QtWidgets.QWidget()
+        importer_layout = QtWidgets.QVBoxLayout(importer_widget)
+        self.create_importer_ui(importer_layout)
+        self.tab_widget.addTab(importer_widget, "Import Materials")
 
-        test_action = QtWidgets.QAction("Test Preview Single Material", self)
-        test_action.triggered.connect(self.test_single_preview)
-        file_menu.addAction(test_action)
+        # Connect tab changed signal
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
 
-        file_menu.addSeparator()
-
-        exit_action = QtWidgets.QAction("Close", self)
-        exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
-
-        # Toolbar
-        toolbar = QtWidgets.QHBoxLayout()
-        self.refresh_button = QtWidgets.QPushButton("Refresh Materials")
-        self.refresh_button.clicked.connect(self.scan_materials)
-
-        self.filter_label = QtWidgets.QLabel("Filter:")
-        self.filter_input = QtWidgets.QLineEdit()
-        self.filter_input.textChanged.connect(self.filter_materials)
-
-        self.generate_previews_button = QtWidgets.QPushButton("Generate Previews")
-        self.generate_previews_button.clicked.connect(self.generate_all_previews)
-
-        toolbar.addWidget(self.refresh_button)
-        toolbar.addWidget(self.filter_label)
-        toolbar.addWidget(self.filter_input)
-        toolbar.addWidget(self.generate_previews_button)
-
-        main_layout.addLayout(toolbar)
-
-        # Scroll area for material grid
-        scroll_area = QtWidgets.QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_widget = QtWidgets.QWidget()
-        self.grid_layout = QtWidgets.QGridLayout(scroll_widget)
-        self.grid_layout.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
-        scroll_area.setWidget(scroll_widget)
-
-        main_layout.addWidget(scroll_area)
+        main_layout.addWidget(self.tab_widget)
 
         # Status bar
         self.status_bar = QtWidgets.QStatusBar()
         self.setStatusBar(self.status_bar)
 
+    def create_browser_ui(self, layout):
+        """Create the browser UI"""
+        # Material folder selection
+        folder_layout = QtWidgets.QHBoxLayout()
+        folder_label = QtWidgets.QLabel("Material Folder:")
+        self.folder_path_field = QtWidgets.QLineEdit()
+        self.folder_path_field.setText(
+            hou.node("/mat").path() if hou.node("/mat") else "/mat"
+        )
+        browse_button = QtWidgets.QPushButton("Browse...")
+        browse_button.clicked.connect(self.browse_material_folder)
+
+        folder_layout.addWidget(folder_label)
+        folder_layout.addWidget(self.folder_path_field, 1)
+        folder_layout.addWidget(browse_button)
+
+        layout.addLayout(folder_layout)
+
+        # Texture folder selection
+        tex_folder_layout = QtWidgets.QHBoxLayout()
+        tex_folder_label = QtWidgets.QLabel("Texture Folder:")
+        self.tex_folder_path_field = QtWidgets.QLineEdit()
+        self.tex_folder_path_field.setText(self.tex_path)
+        tex_browse_button = QtWidgets.QPushButton("Browse...")
+        tex_browse_button.clicked.connect(self.browse_texture_folder)
+
+        tex_folder_layout.addWidget(tex_folder_label)
+        tex_folder_layout.addWidget(self.tex_folder_path_field, 1)
+        tex_folder_layout.addWidget(tex_browse_button)
+
+        layout.addLayout(tex_folder_layout)
+
+        # Browser toolbar
+        browser_toolbar = QtWidgets.QHBoxLayout()
+        self.refresh_button = QtWidgets.QPushButton("Refresh Materials")
+        self.refresh_button.clicked.connect(self.scan_materials)
+
+        self.browser_filter_label = QtWidgets.QLabel("Filter:")
+        self.browser_filter_input = QtWidgets.QLineEdit()
+        self.browser_filter_input.textChanged.connect(
+            lambda text: self.filter_materials(text, "browser")
+        )
+
+        browser_toolbar.addWidget(self.refresh_button)
+        browser_toolbar.addWidget(self.browser_filter_label)
+        browser_toolbar.addWidget(self.browser_filter_input)
+
+        layout.addLayout(browser_toolbar)
+
+        # Browser scroll area
+        browser_scroll_area = QtWidgets.QScrollArea()
+        browser_scroll_area.setWidgetResizable(True)
+        browser_scroll_widget = QtWidgets.QWidget()
+        self.browser_grid_layout = QtWidgets.QGridLayout(browser_scroll_widget)
+        self.browser_grid_layout.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
+        browser_scroll_area.setWidget(browser_scroll_widget)
+
+        layout.addWidget(browser_scroll_area)
+
+    def create_importer_ui(self, layout):
+        """Create the importer UI"""
+        # Source texture folder selection
+        source_layout = QtWidgets.QHBoxLayout()
+        source_label = QtWidgets.QLabel("Source Texture Folder:")
+        self.source_path_field = QtWidgets.QLineEdit()
+        browse_button = QtWidgets.QPushButton("Browse...")
+        browse_button.clicked.connect(self.browse_source_folder)
+
+        source_layout.addWidget(source_label)
+        source_layout.addWidget(self.source_path_field, 1)
+        source_layout.addWidget(browse_button)
+
+        layout.addLayout(source_layout)
+
+        # Project texture folder display (read-only)
+        project_layout = QtWidgets.QHBoxLayout()
+        project_label = QtWidgets.QLabel("Project Texture Folder:")
+        self.project_path_field = QtWidgets.QLineEdit()
+        self.project_path_field.setText(self.tex_path)
+        self.project_path_field.setReadOnly(True)
+        self.project_path_field.setStyleSheet("background-color: #2A2A2A;")
+
+        project_layout.addWidget(project_label)
+        project_layout.addWidget(self.project_path_field, 1)
+
+        layout.addLayout(project_layout)
+
+        # Importer toolbar
+        importer_toolbar = QtWidgets.QHBoxLayout()
+        self.scan_button = QtWidgets.QPushButton("Scan for Materials")
+        self.scan_button.clicked.connect(self.scan_texture_folders)
+
+        self.importer_filter_label = QtWidgets.QLabel("Filter:")
+        self.importer_filter_input = QtWidgets.QLineEdit()
+        self.importer_filter_input.textChanged.connect(
+            lambda text: self.filter_materials(text, "importer")
+        )
+
+        importer_toolbar.addWidget(self.scan_button)
+        importer_toolbar.addWidget(self.importer_filter_label)
+        importer_toolbar.addWidget(self.importer_filter_input)
+
+        layout.addLayout(importer_toolbar)
+
+        # Importer scroll area
+        importer_scroll_area = QtWidgets.QScrollArea()
+        importer_scroll_area.setWidgetResizable(True)
+        importer_scroll_widget = QtWidgets.QWidget()
+        self.importer_grid_layout = QtWidgets.QGridLayout(importer_scroll_widget)
+        self.importer_grid_layout.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
+        importer_scroll_area.setWidget(importer_scroll_widget)
+
+        layout.addWidget(importer_scroll_area)
+
+    def on_tab_changed(self, index):
+        """Handle tab change"""
+        if index == 0:
+            self.current_mode = "browser"
+            self.scan_materials()  # Refresh browser view
+        else:
+            self.current_mode = "importer"
+
+    def browse_material_folder(self):
+        """Open a Houdini node browser to select the material folder"""
+        current_path = self.folder_path_field.text()
+
+        node_path = hou.ui.selectNode(
+            title="Select Material Folder",
+            initial_node=hou.node(current_path) if hou.node(current_path) else None,
+            node_type_filter=hou.nodeTypeFilter.NoFilter,
+            width=400,
+            height=400,
+        )
+
+        if node_path:
+            self.folder_path_field.setText(node_path)
+            self.scan_materials()
+
+    def browse_texture_folder(self):
+        """Open a file browser to select the texture folder"""
+        directory = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Texture Folder", self.tex_path
+        )
+
+        if directory:
+            self.tex_path = directory
+            self.tex_folder_path_field.setText(directory)
+            self.scan_materials()
+
+    def browse_source_folder(self):
+        """Open a file browser to select the source texture folder"""
+        directory = QtWidgets.QFileDialog.getExistingDirectory(
+            self,
+            "Select Source Texture Folder",
+            self.source_path_field.text() or hou.text.expandString("$HOME"),
+        )
+
+        if directory:
+            self.source_tex_path = directory
+            self.source_path_field.setText(directory)
+            self.scan_texture_folders()
+
     def scan_materials(self):
-        """Scan the Houdini project for materials"""
+        """Scan the Houdini project for materials and find their icons"""
         self.status_bar.showMessage("Scanning for materials...")
         self.materials = []
+        self.material_icons = {}
 
-        # Clear the grid layout
-        self.clear_grid_layout()
+        # Clear the browser grid layout
+        self.clear_grid_layout(self.browser_grid_layout)
 
-        # Look for materials in /mat context
-        mat_context = hou.node("/mat")
+        mat_path = self.folder_path_field.text()
+        mat_context = hou.node(mat_path)
+
         if not mat_context:
-            self.status_bar.showMessage("No /mat context found.")
+            self.status_bar.showMessage(f"Material folder not found: {mat_path}")
             return
 
-        # Check all top-level nodes in /mat
+        self.tex_path = self.tex_folder_path_field.text()
+
+        # Check all top-level nodes in material context
         for node in mat_context.children():
-            # For standard Redshift materials
             if node.type().name() == "redshift_vopnet":
                 self.materials.append(node)
+                icon_path = self.find_icon_for_material(node)
+                if icon_path:
+                    self.material_icons[node.path()] = icon_path
 
-            # For materials in folders
             elif node.type().name() == "subnet":
-                # Check if this is a material folder
-                if node.name().startswith("FOLDER_"):
-                    for child in node.children():
-                        if child.type().name() == "redshift_vopnet":
-                            self.materials.append(child)
+                self.scan_subnet_for_materials(node)
 
-        # Update the UI
-        self.populate_grid()
-        self.status_bar.showMessage(f"Found {len(self.materials)} materials.")
+        # Update the browser grid
+        self.populate_browser_grid()
+        self.status_bar.showMessage(
+            f"Found {len(self.materials)} materials, {len(self.material_icons)} with icons."
+        )
 
-    def clear_grid_layout(self):
-        """Clear all items from the grid layout"""
-        while self.grid_layout.count():
-            item = self.grid_layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
+    def scan_texture_folders(self):
+        """Scan the source folder for texture sets with icons"""
+        if not self.source_tex_path or not os.path.exists(self.source_tex_path):
+            self.status_bar.showMessage("Please select a valid source texture folder")
+            return
 
-    def populate_grid(self):
-        """Populate the grid with material previews/placeholders"""
-        columns = 4  # Number of columns in the grid
+        self.status_bar.showMessage("Scanning for texture folders...")
+        self.texture_folders = {}
+        self.preview_icons = {}
+
+        # Clear the importer grid layout
+        self.clear_grid_layout(self.importer_grid_layout)
+
+        # Scan for folders containing textures
+        for root, dirs, files in os.walk(self.source_tex_path):
+            if not files:
+                continue
+
+            texture_files = []
+            icon_file = None
+
+            for file in files:
+                if file.lower() in ["icon.jpg", "icon.jpeg", "icon.png"]:
+                    icon_file = os.path.join(root, file)
+
+                if any(
+                    file.lower().endswith(ext)
+                    for ext in [".jpg", ".jpeg", ".png", ".tif", ".tiff", ".exr", ".tx"]
+                ):
+                    texture_files.append(file)
+
+            if texture_files:
+                folder_name = os.path.basename(root)
+                self.texture_folders[root] = {
+                    "name": folder_name,
+                    "textures": texture_files,
+                    "icon": icon_file,
+                }
+
+                if icon_file:
+                    self.preview_icons[root] = icon_file
+
+        # Update the importer grid
+        self.populate_importer_grid()
+        self.status_bar.showMessage(
+            f"Found {len(self.texture_folders)} texture folders"
+        )
+
+    def populate_browser_grid(self):
+        """Populate the browser grid with material preview cards"""
+        columns = 4
 
         for index, material in enumerate(self.materials):
             row = index // columns
             col = index % columns
 
-            # Create material cell widget
-            cell = self.create_material_cell(material)
-            self.grid_layout.addWidget(cell, row, col)
+            cell = self.create_material_cell(material, "browser")
+            self.browser_grid_layout.addWidget(cell, row, col)
 
-    def create_material_cell(self, material):
-        """Create a widget cell for a material"""
+    def populate_importer_grid(self):
+        """Populate the importer grid with texture folder preview cards"""
+        columns = 4
+
+        for index, (folder_path, folder_info) in enumerate(
+            self.texture_folders.items()
+        ):
+            row = index // columns
+            col = index % columns
+
+            cell = self.create_material_cell((folder_path, folder_info), "importer")
+            self.importer_grid_layout.addWidget(cell, row, col)
+
+    def create_material_cell(self, data, mode):
+        """Create a widget cell for either a material or texture folder"""
         cell_widget = QtWidgets.QWidget()
         cell_layout = QtWidgets.QVBoxLayout()
         cell_widget.setLayout(cell_layout)
+        cell_widget.setFixedSize(220, 240)
 
-        # Create preview image or placeholder
+        # Create preview image
         preview_label = QtWidgets.QLabel()
         preview_label.setFixedSize(200, 200)
         preview_label.setAlignment(QtCore.Qt.AlignCenter)
@@ -480,13 +365,57 @@ class MaterialBrowserWidget(QtWidgets.QMainWindow):
             "background-color: #333333; border: 1px solid #555555;"
         )
 
-        try:
-            # Set placeholder text
-            if material.path() in self.material_previews and os.path.exists(
-                self.material_previews[material.path()]
-            ):
-                # Use cached preview if available
-                pixmap = QtGui.QPixmap(self.material_previews[material.path()])
+        if mode == "browser":
+            # Handle material preview
+            material = data
+            if material.path() in self.material_icons:
+                icon_path = self.material_icons[material.path()]
+                if os.path.exists(icon_path):
+                    pixmap = QtGui.QPixmap(icon_path)
+                    if not pixmap.isNull():
+                        preview_label.setPixmap(
+                            pixmap.scaled(
+                                200,
+                                200,
+                                QtCore.Qt.KeepAspectRatio,
+                                QtCore.Qt.SmoothTransformation,
+                            )
+                        )
+                    else:
+                        preview_label.setText("Icon Error")
+                else:
+                    preview_label.setText("Icon Missing")
+            else:
+                preview_label.setText("No Preview\nAvailable")
+                preview_label.setStyleSheet(
+                    "color: #888888; background-color: #333333; border: 1px solid #555555; font-size: 14px;"
+                )
+
+            display_name = material.name()
+            if display_name.startswith("RS_"):
+                display_name = display_name[3:]
+
+            name_label = QtWidgets.QLabel(display_name)
+            name_label.setAlignment(QtCore.Qt.AlignCenter)
+            name_label.setStyleSheet("color: white; font-weight: bold;")
+
+            cell_layout.addWidget(preview_label)
+            cell_layout.addWidget(name_label)
+
+            # Connect events
+            cell_widget.mouseDoubleClickEvent = (
+                lambda event, m=material: self.on_material_double_clicked(m)
+            )
+            cell_widget.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+            cell_widget.customContextMenuRequested.connect(
+                lambda pos, m=material: self.show_context_menu(pos, m)
+            )
+
+        else:
+            # Handle texture folder preview
+            folder_path, folder_info = data
+            if folder_info["icon"] and os.path.exists(folder_info["icon"]):
+                pixmap = QtGui.QPixmap(folder_info["icon"])
                 if not pixmap.isNull():
                     preview_label.setPixmap(
                         pixmap.scaled(
@@ -497,73 +426,260 @@ class MaterialBrowserWidget(QtWidgets.QMainWindow):
                         )
                     )
                 else:
-                    # If pixmap couldn't be loaded
-                    preview_label.setText("Preview Error")
-                    preview_label.setStyleSheet(
-                        "color: white; background-color: #333333; border: 1px solid #555555;"
-                    )
+                    preview_label.setText("Icon Error")
             else:
-                # Create placeholder with material sphere icon
-                sphere_icon = QtWidgets.QApplication.style().standardIcon(
-                    QtWidgets.QStyle.SP_TitleBarMenuButton
+                preview_label.setText("No Preview\nAvailable")
+                preview_label.setStyleSheet(
+                    "color: #888888; background-color: #333333; border: 1px solid #555555; font-size: 14px;"
                 )
-                if not sphere_icon.isNull():
-                    preview_label.setPixmap(sphere_icon.pixmap(64, 64))
-                else:
-                    # Text fallback
-                    preview_label.setText("No Preview")
-                    preview_label.setStyleSheet(
-                        "color: white; background-color: #333333; border: 1px solid #555555;"
-                    )
 
-            # Clean material name (remove RS_ prefix if present)
-            display_name = material.name()
-            if display_name.startswith("RS_"):
-                display_name = display_name[3:]
-
-            # Create name label
-            name_label = QtWidgets.QLabel(display_name)
+            name_label = QtWidgets.QLabel(folder_info["name"])
             name_label.setAlignment(QtCore.Qt.AlignCenter)
             name_label.setStyleSheet("color: white; font-weight: bold;")
 
-            # Create "NEW" label
-            # In a real implementation, we could check creation time compared to a threshold
-            # For now, we'll add it to match the example image
-            new_label = QtWidgets.QLabel("NEW")
-            new_label.setAlignment(QtCore.Qt.AlignCenter)
-            new_label.setStyleSheet(
-                "color: white; background-color: #555555; font-weight: bold; padding: 2px;"
-            )
+            count_label = QtWidgets.QLabel(f"{len(folder_info['textures'])} textures")
+            count_label.setAlignment(QtCore.Qt.AlignCenter)
+            count_label.setStyleSheet("color: #888888; font-size: 10px;")
 
-            # Add widgets to layout
-            cell_layout.addWidget(new_label)
             cell_layout.addWidget(preview_label)
             cell_layout.addWidget(name_label)
+            cell_layout.addWidget(count_label)
 
-            # Connect double-click event
-            cell_widget.mouseDoubleClickEvent = (
-                lambda event, m=material: self.on_material_double_clicked(m)
+            # Connect click event for import
+            cell_widget.mousePressEvent = (
+                lambda event, path=folder_path: self.on_texture_folder_clicked(path)
             )
 
-            # Add right-click context menu
-            cell_widget.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-            cell_widget.customContextMenuRequested.connect(
-                lambda pos, m=material: self.show_context_menu(pos, m)
-            )
-
-        except Exception as e:
-            # If anything fails, create a minimal cell
-            error_label = QtWidgets.QLabel(f"Error: {str(e)}")
-            error_label.setStyleSheet("color: red;")
-            cell_layout.addWidget(error_label)
+        # Add hover effect
+        cell_widget.setStyleSheet(
+            """
+            QWidget {
+                border: 1px solid #333333;
+                border-radius: 4px;
+            }
+            QWidget:hover {
+                border: 1px solid #666666;
+                background-color: #2A2A2A;
+            }
+        """
+        )
 
         return cell_widget
+
+    def on_texture_folder_clicked(self, folder_path):
+        """Handle click on a texture folder cell - import the material"""
+        folder_info = self.texture_folders[folder_path]
+        folder_name = folder_info["name"]
+
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Import Material",
+            (f"Import material '{folder_name}'?\n\n"
+             f"This will:\n"
+             f"1. Copy textures to project folder\n"
+             f"2. Create a Redshift material"),
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.Yes,
+        )
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            self.import_material(folder_path, folder_info)
+
+    def import_material(self, source_folder, folder_info):
+        """Import the material: copy textures and create Redshift material"""
+        folder_name = folder_info["name"]
+
+        try:
+            if not os.path.exists(self.tex_path):
+                os.makedirs(self.tex_path)
+
+            dest_folder = os.path.join(self.tex_path, folder_name)
+            if os.path.exists(dest_folder):
+                reply = QtWidgets.QMessageBox.question(
+                    self,
+                    "Folder Exists",
+                    f"Folder '{folder_name}' already exists in project. Overwrite?",
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                    QtWidgets.QMessageBox.No,
+                )
+
+                if reply == QtWidgets.QMessageBox.No:
+                    return
+
+                shutil.rmtree(dest_folder)
+
+            # Copy the entire folder
+            self.status_bar.showMessage(f"Copying textures for {folder_name}...")
+            shutil.copytree(source_folder, dest_folder)
+
+            # Create the Redshift material
+            if self.material_tool:
+                self.status_bar.showMessage(f"Creating material for {folder_name}...")
+
+                self.material_tool.tex_path = self.tex_path
+                material_sets = self.material_tool.scan_textures()
+                mat_context = self.material_tool.create_material_context()
+
+                material_created = False
+                for mesh_name, materials in material_sets.items():
+                    if mesh_name == folder_name:
+                        for material_name, textures in materials.items():
+                            new_mat = self.material_tool.create_redshift_material(
+                                mat_context, material_name, textures
+                            )
+                            if new_mat:
+                                material_created = True
+                                self.status_bar.showMessage(
+                                    f"Successfully imported {material_name}"
+                                )
+
+                if not material_created:
+                    self.status_bar.showMessage(
+                        f"Warning: Textures copied but no material created for {folder_name}"
+                    )
+
+                # Switch to browser tab and refresh
+                self.tab_widget.setCurrentIndex(0)
+                self.scan_materials()
+            else:
+                self.status_bar.showMessage(
+                    "Textures copied to project. Material tool not available."
+                )
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self, "Import Error", f"Error importing material: {str(e)}"
+            )
+            self.status_bar.showMessage(f"Error importing {folder_name}")
+
+    def scan_subnet_for_materials(self, subnet):
+        """Recursively scan a subnet for materials"""
+        for child in subnet.children():
+            if child.type().name() == "redshift_vopnet":
+                self.materials.append(child)
+                icon_path = self.find_icon_for_material(child)
+                if icon_path:
+                    self.material_icons[child.path()] = icon_path
+            elif child.type().name() == "subnet":
+                self.scan_subnet_for_materials(child)
+
+    def find_icon_for_material(self, material):
+        """Find an icon file for the given material"""
+        material_name = material.name()
+        if material_name.startswith("RS_"):
+            material_name = material_name[3:]
+
+        parent = material.parent()
+        is_in_folder = parent.type().name() == "subnet" and parent.name().startswith(
+            "FOLDER_"
+        )
+
+        if is_in_folder:
+            folder_name = parent.name().replace("FOLDER_", "")
+            texture_folder = os.path.join(self.tex_path, folder_name)
+        else:
+            texture_folder = os.path.join(self.tex_path, material_name)
+
+        if os.path.exists(texture_folder):
+            for ext in [".jpg", ".jpeg", ".png"]:
+                icon_path = os.path.join(texture_folder, f"icon{ext}")
+                if os.path.exists(icon_path):
+                    return icon_path
+
+                icon_path = os.path.join(texture_folder, f"icon{ext.upper()}")
+                if os.path.exists(icon_path):
+                    return icon_path
+
+        if os.path.exists(self.tex_path):
+            for root, dirs, files in os.walk(self.tex_path):
+                for file in files:
+                    if file.lower() in ["icon.jpg", "icon.jpeg", "icon.png"]:
+                        texture_files = [
+                            f
+                            for f in files
+                            if any(
+                                f.lower().endswith(ext)
+                                for ext in [
+                                    ".jpg",
+                                    ".jpeg",
+                                    ".png",
+                                    ".tif",
+                                    ".tiff",
+                                    ".exr",
+                                    ".tx",
+                                ]
+                            )
+                        ]
+
+                        for tex_file in texture_files:
+                            if material_name.lower() in tex_file.lower():
+                                return os.path.join(root, file)
+
+        return None
+
+    def clear_grid_layout(self, layout):
+        """Clear all items from a grid layout"""
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+    def filter_materials(self, filter_text, mode):
+        """Filter materials based on the filter text"""
+        if mode == "browser":
+            self.clear_grid_layout(self.browser_grid_layout)
+
+            if not filter_text:
+                self.populate_browser_grid()
+                return
+
+            filtered_materials = [
+                m for m in self.materials 
+                if filter_text.lower() in m.name().lower()
+            ]
+            columns = 4
+
+            for index, material in enumerate(filtered_materials):
+                row = index // columns
+                col = index % columns
+                cell = self.create_material_cell(material, "browser")
+                self.browser_grid_layout.addWidget(cell, row, col)
+
+            self.status_bar.showMessage(
+                f"Showing {len(filtered_materials)} of {len(self.materials)} materials"
+            )
+
+        else:  # importer mode
+            self.clear_grid_layout(self.importer_grid_layout)
+
+            if not filter_text:
+                self.populate_importer_grid()
+                return
+
+            filtered_folders = {
+                path: info
+                for path, info in self.texture_folders.items()
+                if filter_text.lower() in info["name"].lower()
+            }
+            columns = 4
+
+            for index, (folder_path, folder_info) in enumerate(
+                filtered_folders.items()
+            ):
+                row = index // columns
+                col = index % columns
+                cell = self.create_material_cell((folder_path, folder_info), "importer")
+                self.importer_grid_layout.addWidget(cell, row, col)
+
+            self.status_bar.showMessage(
+                f"Showing {len(filtered_folders)} of {len(self.texture_folders)} materials"
+            )
 
     def show_context_menu(self, pos, material):
         """Show context menu for material cell"""
         context_menu = QtWidgets.QMenu(self)
 
-        # Add menu actions
         open_action = context_menu.addAction("Open in Network Editor")
         open_action.triggered.connect(lambda: self.on_material_double_clicked(material))
 
@@ -572,19 +688,12 @@ class MaterialBrowserWidget(QtWidgets.QMainWindow):
             lambda: self.assign_material_to_selection(material)
         )
 
-        refresh_action = context_menu.addAction("Refresh Preview")
-        refresh_action.triggered.connect(lambda: self.refresh_single_preview(material))
-
-        # Show the menu
         context_menu.exec_(QtGui.QCursor.pos())
 
     def assign_material_to_selection(self, material):
         """Assign the material to currently selected objects"""
         try:
-            # Get selected nodes in the viewport
             selection = hou.selectedNodes()
-
-            # Filter only geometry nodes
             geo_nodes = [
                 node
                 for node in selection
@@ -596,7 +705,6 @@ class MaterialBrowserWidget(QtWidgets.QMainWindow):
                 self.status_bar.showMessage("No valid geometry objects selected")
                 return
 
-            # Assign material to each selected node
             for node in geo_nodes:
                 if "shop_materialpath" in [p.name() for p in node.parms()]:
                     node.parm("shop_materialpath").set(material.path())
@@ -608,281 +716,18 @@ class MaterialBrowserWidget(QtWidgets.QMainWindow):
         except Exception as e:
             self.status_bar.showMessage(f"Error assigning material: {str(e)}")
 
-    def refresh_single_preview(self, material):
-        """Refresh the preview for a single material"""
-        try:
-            # Show busy cursor
-            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-
-            # Check if Redshift is available
-            if not self.preview_generator.redshift_available:
-                self.status_bar.showMessage(
-                    "Error: Redshift is not available. Cannot generate preview."
-                )
-                QtWidgets.QApplication.restoreOverrideCursor()
-                return
-
-            # Setup preview scene
-            preview_obj, camera = self.preview_generator.setup_preview_scene()
-
-            if not preview_obj or not camera:
-                self.status_bar.showMessage(
-                    "Failed to create preview scene. Check the console for errors."
-                )
-                QtWidgets.QApplication.restoreOverrideCursor()
-                return
-
-            try:
-                # Check if material exists (don't use isValid)
-                if not material.path() or not hou.node(material.path()):
-                    self.status_bar.showMessage(
-                        f"Error: Material {material.name()} is not valid"
-                    )
-                    QtWidgets.QApplication.restoreOverrideCursor()
-                    return
-
-                # Generate preview
-                preview_path = self.preview_generator.generate_preview(
-                    material, preview_obj, camera
-                )
-                if preview_path:
-                    self.material_previews[material.path()] = preview_path
-                    self.status_bar.showMessage(
-                        f"Updated preview for {material.name()}"
-                    )
-                else:
-                    self.status_bar.showMessage(
-                        f"Failed to generate preview for {material.name()}"
-                    )
-            finally:
-                # Clean up preview scene
-                self.preview_generator.cleanup_preview_scene(preview_obj, camera)
-
-            # Rebuild the grid to show the updated preview
-            self.populate_grid()
-
-        except Exception as e:
-            self.status_bar.showMessage(f"Error refreshing preview: {str(e)}")
-        finally:
-            # Restore cursor
-            QtWidgets.QApplication.restoreOverrideCursor()
-
     def on_material_double_clicked(self, material):
         """Handle double-click on a material cell"""
-        # You could implement different actions here, like:
-        # 1. Open the material network
-        # 2. Assign the material to selected objects
-        # 3. Show material properties
-
-        # For now, we'll just open the material network
         material.setSelected(True)
         hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor).setCurrentNode(material)
-
         self.status_bar.showMessage(f"Selected material: {material.name()}")
-
-    def generate_all_previews(self):
-        """Generate preview renders for all materials"""
-        if not self.materials:
-            self.status_bar.showMessage(
-                "No materials to preview. Please scan for materials first."
-            )
-            return
-
-        # Check if Redshift is available
-        if not self.preview_generator.redshift_available:
-            self.status_bar.showMessage(
-                "Error: Redshift is not available. Cannot generate previews."
-            )
-            # Show error dialog
-            QtWidgets.QMessageBox.critical(
-                self,
-                "Redshift Not Available",
-                "Redshift does not appear to be installed or is not properly configured in Houdini.\n\n"
-                "The material browser can still be used to browse materials, but preview generation requires Redshift.",
-            )
-            return
-
-        try:
-            # Setup preview scene
-            preview_obj, camera = self.preview_generator.setup_preview_scene()
-
-            if not preview_obj or not camera:
-                error_msg = (
-                    "Failed to create preview scene. Check the console for errors."
-                )
-                self.status_bar.showMessage(error_msg)
-                QtWidgets.QMessageBox.warning(self, "Preview Error", error_msg)
-                return
-
-            # Create temp directories if they don't exist
-            temp_path = os.path.join(tempfile.gettempdir(), "houdini_material_previews")
-            os.makedirs(temp_path, exist_ok=True)
-
-            # Show progress dialog
-            progress = QtWidgets.QProgressDialog(
-                "Generating previews...", "Cancel", 0, len(self.materials), self
-            )
-            progress.setWindowModality(QtCore.Qt.WindowModal)
-
-            # Counter for successful previews
-            success_count = 0
-
-            try:
-                for i, material in enumerate(self.materials):
-                    progress.setValue(i)
-                    progress.setLabelText(f"Rendering preview for {material.name()}")
-
-                    if progress.wasCanceled():
-                        break
-
-                    try:
-                        # Check if material exists (don't use isValid as it's not available in all Houdini versions)
-                        if not material.path() or not hou.node(material.path()):
-                            print(f"Skipping invalid material: {material.name()}")
-                            continue
-
-                        # Generate preview
-                        preview_path = self.preview_generator.generate_preview(
-                            material, preview_obj, camera
-                        )
-                        if preview_path:
-                            self.material_previews[material.path()] = preview_path
-                            success_count += 1
-                    except Exception as e:
-                        print(
-                            f"Error generating preview for {material.name()}: {str(e)}"
-                        )
-                        continue
-
-                    # Force update the UI immediately
-                    QtWidgets.QApplication.processEvents()
-
-                # Rebuild the grid with the new previews
-                self.populate_grid()
-
-            finally:
-                # Clean up preview scene
-                self.preview_generator.cleanup_preview_scene(preview_obj, camera)
-                progress.setValue(len(self.materials))
-
-            # Show success/failure message
-            if success_count == 0:
-                error_msg = (
-                    "Failed to generate any previews. Check the console for errors."
-                )
-                self.status_bar.showMessage(error_msg)
-                QtWidgets.QMessageBox.warning(self, "Preview Error", error_msg)
-            elif success_count < len(self.materials):
-                status_msg = f"Generated {success_count} previews. {len(self.materials) - success_count} failed."
-                self.status_bar.showMessage(status_msg)
-                QtWidgets.QMessageBox.information(
-                    self, "Preview Generation", status_msg
-                )
-            else:
-                self.status_bar.showMessage(
-                    f"Successfully generated all {success_count} previews."
-                )
-
-        except Exception as e:
-            import traceback
-
-            traceback.print_exc()
-            error_msg = f"Error generating previews: {str(e)}"
-            self.status_bar.showMessage(error_msg)
-            QtWidgets.QMessageBox.critical(self, "Error", error_msg)
-
-    def test_single_preview(self):
-        """Test preview generation with a single material"""
-        if not self.materials:
-            self.status_bar.showMessage(
-                "No materials to test. Please scan for materials first."
-            )
-            return
-
-        # Pick the first material to test
-        test_material = self.materials[0]
-
-        # Show progress dialog
-        progress = QtWidgets.QProgressDialog(
-            "Testing preview generation...", "Cancel", 0, 2, self
-        )
-        progress.setWindowModality(QtCore.Qt.WindowModal)
-
-        try:
-            # Setup preview scene
-            progress.setValue(0)
-            progress.setLabelText("Setting up preview scene...")
-            QtWidgets.QApplication.processEvents()
-
-            preview_obj, camera = self.preview_generator.setup_preview_scene()
-
-            if not preview_obj or not camera:
-                error_msg = (
-                    "Failed to create preview scene. Check the console for errors."
-                )
-                self.status_bar.showMessage(error_msg)
-                QtWidgets.QMessageBox.warning(self, "Preview Error", error_msg)
-                return
-
-            # Generate test preview
-            progress.setValue(1)
-            progress.setLabelText(f"Generating test preview for {test_material.name()}")
-            QtWidgets.QApplication.processEvents()
-
-            preview_path = self.preview_generator.generate_preview(
-                test_material, preview_obj, camera
-            )
-
-            if preview_path:
-                self.material_previews[test_material.path()] = preview_path
-                self.status_bar.showMessage(
-                    f"Successfully generated test preview for {test_material.name()}"
-                )
-
-                # Update grid to show the test preview
-                self.populate_grid()
-
-                QtWidgets.QMessageBox.information(
-                    self,
-                    "Test Successful",
-                    f"Successfully generated preview for {test_material.name()}\n\n"
-                    "If this worked, you can now generate previews for all materials.",
-                )
-            else:
-                self.status_bar.showMessage(
-                    f"Failed to generate test preview for {test_material.name()}"
-                )
-                QtWidgets.QMessageBox.warning(
-                    self,
-                    "Test Failed",
-                    f"Failed to generate preview for {test_material.name()}\n\n"
-                    "Check the console for error messages and troubleshoot before trying to generate all previews.",
-                )
-
-            # Clean up preview scene
-            self.preview_generator.cleanup_preview_scene(preview_obj, camera)
-
-        except Exception as e:
-            import traceback
-
-            traceback.print_exc()
-            error_msg = f"Error during test preview: {str(e)}"
-            self.status_bar.showMessage(error_msg)
-            QtWidgets.QMessageBox.critical(self, "Error", error_msg)
-
-        progress.setValue(2)
 
 
 def launch_material_browser():
     """Launch the material browser tool"""
-    # Create and show the browser window
     browser = MaterialBrowserWidget(hou.ui.mainQtWindow())
     browser.show()
-
-    # Initial scan for materials
     browser.scan_materials()
-
-    # Return the browser instance to prevent it from being garbage collected
     return browser
 
 
@@ -894,73 +739,14 @@ def show_material_browser():
     """Show the material browser tool (creates a new instance if needed)"""
     global _browser_instance
 
-    # If browser exists and is still valid, just show it
     if _browser_instance and not _browser_instance.isVisible():
         _browser_instance.show()
         _browser_instance.raise_()
         _browser_instance.activateWindow()
     else:
-        # Create a new browser
         _browser_instance = launch_material_browser()
 
     return _browser_instance
-
-
-def add_to_shelf():
-    """Add the Material Browser tool to the current shelf"""
-    # Get the current shelf set
-    shelf_set = hou.ui.curDesktop().paneTabOfType(hou.paneTabType.ShelfTab).shellSet()
-
-    # Check if we have any shelves
-    if not shelf_set.shelves():
-        return "No shelves found"
-
-    # Create or find the Tools shelf
-    tools_shelf = None
-    for shelf in shelf_set.shelves():
-        if shelf.name() == "tools":
-            tools_shelf = shelf
-            break
-
-    if not tools_shelf:
-        # Create a new Tools shelf if it doesn't exist
-        tools_shelf = shelf_set.defaultShelf()
-
-    # Create the tool
-    tool = hou.shelftool.ShelfTool(
-        "MaterialBrowser",
-        "Material Browser",
-        "Launch the Material Browser tool",
-        icon="SHELF_material_palette",
-    )
-
-    tool.setScript(
-        """
-import inspect
-import os
-import sys
-
-# Get the script directory path
-script_path = os.path.dirname(inspect.getframeinfo(inspect.currentframe()).filename)
-
-# Add the directory to sys.path if needed
-if script_path not in sys.path:
-    sys.path.append(script_path)
-
-# Import the material browser module
-import material_browser
-import importlib
-importlib.reload(material_browser)  # Reload to get latest changes
-
-# Launch the browser
-material_browser.show_material_browser()
-"""
-    )
-
-    # Add the tool to the shelf
-    tools_shelf.addTool(tool)
-
-    return "Tool added to the shelf"
 
 
 # Entry point for standalone use
