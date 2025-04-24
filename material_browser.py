@@ -130,7 +130,7 @@ class MaterialPreviewGenerator:
             material_path = material_node.path()
             material_name = material_node.name()
 
-            # Create a safe name for the output file (remove invalid characters)
+            # Create a safe name for the output file
             safe_name = re.sub(r'[\\/*?:"<>|]', "_", material_name)
 
             # Assign material to preview object
@@ -156,12 +156,7 @@ class MaterialPreviewGenerator:
             rop_name = f"preview_{safe_name}"
             rop = out_node.createNode("Redshift_ROP", rop_name)
 
-            # Print all available parameters to debug (temporarily)
-            print(
-                f"Available parameters in Redshift_ROP: {[p.name() for p in rop.parms()]}"
-            )
-
-            # Set camera parameter with multiple attempts
+            # Set camera parameter
             camera_param_names = ["RS_renderCamera", "camera", "RS_camera"]
             camera_set = False
             for param_name in camera_param_names:
@@ -175,129 +170,99 @@ class MaterialPreviewGenerator:
                 rop.destroy()
                 return None
 
-            # Try different resolution parameter names
-            # First, check if we need to enable resolution override
-            override_params = [
-                "RS_overrideCameraRes",
-                "override_camera_res",
-                "override_camerares",
-            ]
-            for param_name in override_params:
-                if rop.parm(param_name):
-                    rop.parm(param_name).set(1)
-                    break
+            # Enable resolution override
+            if rop.parm("RS_overrideCameraRes"):
+                rop.parm("RS_overrideCameraRes").set(1)
+            elif rop.parm("override_camerares"):
+                rop.parm("override_camerares").set(1)
 
-            # Set resolution X
-            resX_params = [
-                "RS_overrideResX",
-                "override_res_x",
-                "res_overridex",
-                "res_x",
-            ]
-            resX_set = False
-            for param_name in resX_params:
-                if rop.parm(param_name):
-                    rop.parm(param_name).set(self.preview_size)
-                    resX_set = True
-                    break
+            # Set resolution
+            if rop.parm("RS_overrideRes1"):
+                rop.parm("RS_overrideRes1").set(self.preview_size)
+            elif rop.parm("res_overridex"):
+                rop.parm("res_overridex").set(self.preview_size)
 
-            # Set resolution Y
-            resY_params = [
-                "RS_overrideResY",
-                "override_res_y",
-                "res_overridey",
-                "res_y",
-            ]
-            resY_set = False
-            for param_name in resY_params:
-                if rop.parm(param_name):
-                    rop.parm(param_name).set(self.preview_size)
-                    resY_set = True
-                    break
+            if rop.parm("RS_overrideRes2"):
+                rop.parm("RS_overrideRes2").set(self.preview_size)
+            elif rop.parm("res_overridey"):
+                rop.parm("res_overridey").set(self.preview_size)
 
-            # If we couldn't set resolution overrides, try the main resolution parameters
-            if not resX_set or not resY_set:
-                resX_main_params = ["res_x", "resolutionx", "resx"]
-                resY_main_params = ["res_y", "resolutiony", "resy"]
-
-                for param_name in resX_main_params:
-                    if rop.parm(param_name):
-                        rop.parm(param_name).set(self.preview_size)
-                        resX_set = True
-                        break
-
-                for param_name in resY_main_params:
-                    if rop.parm(param_name):
-                        rop.parm(param_name).set(self.preview_size)
-                        resY_set = True
-                        break
-
-            # Set output path for the render
-            output_params = [
-                "RS_outputFileNamePrefix",
-                "RS_outputFilePrefix",
-                "output_filename",
-                "RS_output_file",
-                "picture",
-            ]
+            # Set output path
             output_path = os.path.join(
                 tempfile.gettempdir(), f"{safe_name}_preview.jpg"
             )
-            output_set = False
 
-            for param_name in output_params:
-                if rop.parm(param_name):
-                    rop.parm(param_name).set(output_path)
-                    output_set = True
-                    break
+            if rop.parm("RS_outputFileNamePrefix"):
+                rop.parm("RS_outputFileNamePrefix").set(output_path)
+            elif rop.parm("vm_picture"):
+                rop.parm("vm_picture").set(output_path)
 
-            if not output_set:
-                print("Error: Could not find output parameter in Redshift ROP")
-                rop.destroy()
-                return None
+            # Set output format to JPG - use the correct parameter value
+            if rop.parm("RS_outputFileFormat"):
+                try:
+                    # The parameter takes an integer value, not a string
+                    # 0 = EXR, 1 = TGA, 2 = PNG, 3 = TIFF, 4 = JPG
+                    rop.parm("RS_outputFileFormat").set(4)  # JPG
+                except:
+                    print("Warning: Could not set output format to JPG")
 
-            # Additional settings to ensure render completes successfully
-            # Set some common Redshift settings with try/except for each one
-            try:
-                if rop.parm("RS_unifiedMaxSamples"):
-                    rop.parm("RS_unifiedMaxSamples").set(
-                        16
-                    )  # Lower samples for preview
-                elif rop.parm("UnifiedMaxSamples"):
-                    rop.parm("UnifiedMaxSamples").set(16)
-            except:
-                pass
+            # Set JPG compression
+            if rop.parm("RS_outputJpgCompression"):
+                rop.parm("RS_outputJpgCompression").set(90)  # 90% quality
 
-            try:
-                if rop.parm("RS_unifiedMinSamples"):
-                    rop.parm("RS_unifiedMinSamples").set(4)  # Lower samples for preview
-                elif rop.parm("UnifiedMinSamples"):
-                    rop.parm("UnifiedMinSamples").set(4)
-            except:
-                pass
+            # Reduce quality settings for faster renders
+            if rop.parm("UnifiedMinSamples"):
+                rop.parm("UnifiedMinSamples").set(1)
 
-            # Check if execute/render param exists
-            render_params = ["execute", "render", "execute_render"]
-            render_param = None
+            if rop.parm("UnifiedMaxSamples"):
+                rop.parm("UnifiedMaxSamples").set(8)  # Reduced from 16
 
-            for param_name in render_params:
-                if rop.parm(param_name):
-                    render_param = rop.parm(param_name)
-                    break
+            # Enable progressive rendering for faster feedback
+            if rop.parm("ProgressiveRenderingEnabled"):
+                rop.parm("ProgressiveRenderingEnabled").set(1)
 
+            if rop.parm("ProgressiveRenderingNumPasses"):
+                rop.parm("ProgressiveRenderingNumPasses").set(
+                    4
+                )  # Quick progressive pass
+
+            # Set lower quality settings for preview
+            if rop.parm("RS_easyBucketQuality"):
+                rop.parm("RS_easyBucketQuality").set(0)  # Low quality for speed
+
+            # Disable denoising for faster renders
+            if rop.parm("RS_denoisingEnabled"):
+                rop.parm("RS_denoisingEnabled").set(0)
+
+            # Adaptive sampling settings to speed up renders
+            if rop.parm("UnifiedAdaptiveErrorThreshold"):
+                rop.parm("UnifiedAdaptiveErrorThreshold").set(
+                    0.1
+                )  # Increase threshold for faster (but noisier) results
+
+            # Enable automatic sampling for efficiency
+            if rop.parm("EnableAutomaticSampling"):
+                rop.parm("EnableAutomaticSampling").set(1)
+
+            # Render
+            render_param = rop.parm("execute")
             if not render_param:
                 print("Error: 'execute' parameter not found in Redshift ROP")
                 rop.destroy()
                 return None
 
-            # Render
+            # Render and wait with better timeout handling
             render_param.pressButton()
 
-            # Wait for render to complete (with timeout)
-            timeout = 30  # seconds
+            # Increased timeout to 120 seconds for complex materials
+            timeout = 120
             start_time = time.time()
+
+            # Check for file with small delays to reduce load
             while not os.path.exists(output_path):
-                time.sleep(0.1)
+                time.sleep(0.5)  # Check every half second
+
+                # Check if render is still in progress
                 if time.time() - start_time > timeout:
                     print(f"Error: Render timeout for {material_name}")
                     break
@@ -307,6 +272,8 @@ class MaterialPreviewGenerator:
 
             # Check if the file was created
             if os.path.exists(output_path):
+                # Wait a bit for file to be fully written
+                time.sleep(0.5)
                 return output_path
             else:
                 print(f"Error: Render failed to create output file for {material_name}")
@@ -317,6 +284,12 @@ class MaterialPreviewGenerator:
 
             traceback.print_exc()
             print(f"Error generating preview for {material_node.name()}: {str(e)}")
+            # Try to clean up ROP node if it exists
+            if "rop" in locals():
+                try:
+                    rop.destroy()
+                except:
+                    pass
             return None
 
     def cleanup_preview_scene(self, preview_obj, camera):
@@ -348,6 +321,38 @@ class MaterialBrowserWidget(QtWidgets.QMainWindow):
         self.materials = []
         self.material_previews = {}
         self.preview_generator = MaterialPreviewGenerator()
+
+    def filter_materials(self, filter_text):
+        """Filter materials based on the filter text"""
+        # Clear the grid layout
+        self.clear_grid_layout()
+
+        # If no filter text, show all materials
+        if not filter_text:
+            self.populate_grid()
+            return
+
+        # Filter materials by name
+        filtered_materials = []
+        for material in self.materials:
+            if filter_text.lower() in material.name().lower():
+                filtered_materials.append(material)
+
+        # Repopulate grid with filtered materials
+        columns = 4  # Number of columns in the grid
+
+        for index, material in enumerate(filtered_materials):
+            row = index // columns
+            col = index % columns
+
+            # Create material cell widget
+            cell = self.create_material_cell(material)
+            self.grid_layout.addWidget(cell, row, col)
+
+        # Update status
+        self.status_bar.showMessage(
+            f"Showing {len(filtered_materials)} of {len(self.materials)} materials"
+        )
 
     def create_ui(self):
         """Create the user interface"""
