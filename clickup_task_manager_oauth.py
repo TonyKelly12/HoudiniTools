@@ -7,8 +7,9 @@ import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import threading
-from PySide2 import QtWidgets
-from datetime import datetime
+from PySide2 import QtCore, QtWidgets
+from datetime import datetime, timedelta
+from functools import partial
 
 
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
@@ -1077,3 +1078,349 @@ def launch_task_manager():
         _task_manager_instance = show_clickup_task_manager()
 
     return _task_manager_instance
+
+
+class PomodoroDialog(QtWidgets.QDialog):
+    """Pomodoro Timer Dialog with Time Tracking"""
+
+    def __init__(self, task_manager, parent=None):
+        super(PomodoroDialog, self).__init__(parent)
+        self.task_manager = task_manager
+        self.setWindowTitle("Pomodoro Timer")
+        self.resize(400, 300)
+
+        # Timer variables
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update_timer)
+        self.time_remaining = 0
+        self.session_duration = 0
+        self.is_running = False
+        self.current_task_id = None
+
+        # Create UI
+        self.create_ui()
+
+        # Load tasks from task manager
+        self.load_tasks()
+
+    def create_ui(self):
+        """Create the user interface"""
+        layout = QtWidgets.QVBoxLayout(self)
+
+        # Task selection
+        task_layout = QtWidgets.QHBoxLayout()
+        task_label = QtWidgets.QLabel("Task:")
+        self.task_combo = QtWidgets.QComboBox()
+        self.task_combo.setMinimumWidth(250)
+        task_layout.addWidget(task_label)
+        task_layout.addWidget(self.task_combo)
+        layout.addLayout(task_layout)
+
+        # Time selection
+        time_layout = QtWidgets.QHBoxLayout()
+        time_label = QtWidgets.QLabel("Duration:")
+        self.time_combo = QtWidgets.QComboBox()
+
+        # Add time options in 15-minute intervals up to 2 hours
+        for minutes in range(15, 121, 15):
+            hours = minutes // 60
+            remaining_minutes = minutes % 60
+            if hours > 0:
+                display_text = (
+                    f"{hours}h {remaining_minutes}m"
+                    if remaining_minutes > 0
+                    else f"{hours}h"
+                )
+            else:
+                display_text = f"{minutes}m"
+            self.time_combo.addItem(display_text, minutes)
+
+        # Set default to 25 minutes (Pomodoro standard)
+        index = self.time_combo.findData(25)
+        if index >= 0:
+            self.time_combo.setCurrentIndex(index)
+
+        time_layout.addWidget(time_label)
+        time_layout.addWidget(self.time_combo)
+        layout.addLayout(time_layout)
+
+        # Timer display
+        self.timer_display = QtWidgets.QLabel("00:00")
+        self.timer_display.setAlignment(QtCore.Qt.AlignCenter)
+        self.timer_display.setStyleSheet(
+            """
+            QLabel {
+                font-size: 48px;
+                font-weight: bold;
+                color: white;
+                background-color: #333333;
+                border-radius: 10px;
+                padding: 20px;
+            }
+        """
+        )
+        layout.addWidget(self.timer_display)
+
+        # Control buttons
+        button_layout = QtWidgets.QHBoxLayout()
+        self.start_button = QtWidgets.QPushButton("Start")
+        self.start_button.clicked.connect(self.start_timer)
+        self.pause_button = QtWidgets.QPushButton("Pause")
+        self.pause_button.clicked.connect(self.pause_timer)
+        self.pause_button.setEnabled(False)
+        self.reset_button = QtWidgets.QPushButton("Reset")
+        self.reset_button.clicked.connect(self.reset_timer)
+        self.reset_button.setEnabled(False)
+
+        button_layout.addWidget(self.start_button)
+        button_layout.addWidget(self.pause_button)
+        button_layout.addWidget(self.reset_button)
+        layout.addLayout(button_layout)
+
+        # Status label
+        self.status_label = QtWidgets.QLabel("")
+        self.status_label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(self.status_label)
+
+        # Refresh tasks button
+        refresh_button = QtWidgets.QPushButton("Refresh Tasks")
+        refresh_button.clicked.connect(self.load_tasks)
+        layout.addWidget(refresh_button)
+
+    def load_tasks(self):
+        """Load tasks from the task manager"""
+        self.task_combo.clear()
+
+        if not self.task_manager.current_list:
+            self.status_label.setText("Please select a list in the Task Manager first")
+            return
+
+        if not self.task_manager.tasks:
+            self.status_label.setText("No tasks found")
+            return
+
+        for task in self.task_manager.tasks:
+            task_name = task.get("name", "Unnamed Task")
+            task_id = task.get("id", "")
+            if task_id:
+                self.task_combo.addItem(task_name, task_id)
+
+        self.status_label.setText(f"Loaded {len(self.task_manager.tasks)} tasks")
+
+    def start_timer(self):
+        """Start the timer"""
+        if not self.task_combo.currentData():
+            self.status_label.setText("Please select a task first")
+            return
+
+        if not self.is_running:
+            selected_minutes = self.time_combo.currentData()
+            self.session_duration = selected_minutes * 60  # Convert to seconds
+            self.time_remaining = self.session_duration
+            self.current_task_id = self.task_combo.currentData()
+
+            self.timer.start(1000)  # Update every second
+            self.is_running = True
+
+            self.start_button.setEnabled(False)
+            self.pause_button.setEnabled(True)
+            self.reset_button.setEnabled(True)
+            self.task_combo.setEnabled(False)
+            self.time_combo.setEnabled(False)
+
+            self.status_label.setText("Timer running...")
+
+    def pause_timer(self):
+        """Pause the timer"""
+        if self.is_running:
+            self.timer.stop()
+            self.is_running = False
+            self.start_button.setEnabled(True)
+            self.pause_button.setEnabled(False)
+            self.status_label.setText("Timer paused")
+
+    def reset_timer(self):
+        """Reset the timer"""
+        self.timer.stop()
+        self.is_running = False
+        self.time_remaining = 0
+
+        self.start_button.setEnabled(True)
+        self.pause_button.setEnabled(False)
+        self.reset_button.setEnabled(False)
+        self.task_combo.setEnabled(True)
+        self.time_combo.setEnabled(True)
+
+        self.timer_display.setText("00:00")
+        self.status_label.setText("Timer reset")
+
+    def update_timer(self):
+        """Update the timer display"""
+        if self.time_remaining > 0:
+            self.time_remaining -= 1
+            minutes = self.time_remaining // 60
+            seconds = self.time_remaining % 60
+            self.timer_display.setText(f"{minutes:02d}:{seconds:02d}")
+        else:
+            self.timer.stop()
+            self.is_running = False
+            self.timer_display.setText("00:00")
+            self.on_timer_complete()
+
+    def on_timer_complete(self):
+        """Handle timer completion"""
+        self.status_label.setText("Session complete! Updating time tracking...")
+
+        # Update time tracking in ClickUp
+        if self.current_task_id:
+            success = self.update_time_tracking(
+                self.current_task_id, self.session_duration
+            )
+
+            if success:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Timer Complete",
+                    f"Session complete! Added {self.time_combo.currentText()} to task time tracking.",
+                )
+            else:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Update Failed",
+                    "Session complete, but failed to update time tracking in ClickUp.",
+                )
+
+        # Reset timer UI
+        self.reset_timer()
+
+    def update_time_tracking(self, task_id, duration_seconds):
+        """Update time tracking for a task in ClickUp"""
+        if not self.task_manager.authenticator:
+            self.status_label.setText("Not authenticated with ClickUp")
+            return False
+
+        try:
+            headers = self.task_manager.authenticator.get_headers()
+
+            # Get current time tracking data
+            response = requests.get(
+                f"{self.task_manager.base_url}/task/{task_id}",
+                headers=headers,
+                params={"custom_fields": "true"},
+            )
+
+            if response.status_code != 200:
+                print(f"Failed to get task data: {response.status_code}")
+                return False
+
+            # task_data = response.json()
+
+            # Calculate new time in milliseconds
+            duration_ms = duration_seconds * 1000
+
+            # Create time entry
+            time_entry_data = {
+                "description": "Pomodoro session from Houdini",
+                "start": int(
+                    (datetime.now() - timedelta(seconds=duration_seconds)).timestamp()
+                    * 1000
+                ),
+                "end": int(datetime.now().timestamp() * 1000),
+                "duration": duration_ms,
+            }
+
+            # Post time entry
+            entry_response = requests.post(
+                f"{self.task_manager.base_url}/task/{task_id}/time_entry",
+                headers=headers,
+                json=time_entry_data,
+            )
+
+            if entry_response.status_code == 200:
+                self.status_label.setText("Time tracking updated successfully")
+                # Refresh task manager display
+                self.task_manager.refresh_tasks()
+                return True
+            else:
+                print(f"Failed to create time entry: {entry_response.status_code}")
+                print(f"Response: {entry_response.text}")
+                self.status_label.setText("Failed to update time tracking")
+                return False
+
+        except Exception as e:
+            print(f"Error updating time tracking: {str(e)}")
+            self.status_label.setText(f"Error: {str(e)}")
+            return False
+
+
+# Update the ClickUpTaskManager class to add the Pomodoro timer button
+def extend_clickup_task_manager():
+    """Extend the ClickUpTaskManager class with Pomodoro timer functionality"""
+
+    original_create_ui = ClickUpTaskManager.create_ui
+
+    def new_create_ui(self):
+        """Extended create_ui method with Pomodoro timer button"""
+        # Call the original create_ui method
+        original_create_ui(self)
+
+        # Find the action layout in the main layout
+        main_layout = self.centralWidget().layout()
+        action_layout = None
+
+        # Find the action layout
+        for i in range(main_layout.count()):
+            item = main_layout.itemAt(i)
+            if isinstance(item, QtWidgets.QHBoxLayout):
+                layout = item
+                # Check if this layout contains the refresh button
+                for j in range(layout.count()):
+                    widget = layout.itemAt(j).widget()
+                    if (
+                        widget
+                        and isinstance(widget, QtWidgets.QPushButton)
+                        and widget.text() == "Refresh"
+                    ):
+                        action_layout = layout
+                        break
+                if action_layout:
+                    break
+
+        if action_layout:
+            # Add Pomodoro timer button
+            pomodoro_btn = QtWidgets.QPushButton("Pomodoro Timer")
+            pomodoro_btn.clicked.connect(partial(show_pomodoro_timer, self))
+            action_layout.addWidget(pomodoro_btn)
+
+    # Replace the create_ui method
+    ClickUpTaskManager.create_ui = new_create_ui
+
+
+def show_pomodoro_timer(task_manager):
+    """Show the Pomodoro timer dialog"""
+    dialog = PomodoroDialog(task_manager, task_manager)
+    dialog.exec_()
+
+
+# Apply the extension to the ClickUpTaskManager class
+extend_clickup_task_manager()
+
+
+# Optional: If you want to create a standalone Pomodoro timer button in your shelf
+def launch_pomodoro_timer():
+    """Launch the Pomodoro timer directly"""
+    # Try to find existing task manager instance
+    task_manager = None
+    for widget in QtWidgets.QApplication.topLevelWidgets():
+        if isinstance(widget, ClickUpTaskManager) and widget.isVisible():
+            task_manager = widget
+            break
+
+    if task_manager:
+        show_pomodoro_timer(task_manager)
+    else:
+        # Create a new task manager instance
+        task_manager = ClickUpTaskManager(hou.ui.mainQtWindow())
+        task_manager.show()
+        # Show Pomodoro timer after the task manager is visible
+        QtCore.QTimer.singleShot(100, lambda: show_pomodoro_timer(task_manager))
