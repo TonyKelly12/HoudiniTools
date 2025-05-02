@@ -2,4 +2,6 @@
 
     - Redshift Material Tool with UDIM Support : The updated Redshift Material Tool now includes support for UDIM textures.
     - Material Browser & Importer : A material browser used to import materials into your Houdini Project.
+    - Clickup Task Manager Addon  with task timer
+    - Houdini + Claud-AI addon 
     
