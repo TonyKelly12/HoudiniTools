@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - DB_NAME=model_database
+    depends_on:
+      - mongodb
+    networks:
+      - model-api-network
+
+  mongodb:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - model-api-network
+
+networks:
+  model-api-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
