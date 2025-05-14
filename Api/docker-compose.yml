@@ -1,3 +1,4 @@
+# docker-compose.yml (with volume mounts for hybrid approach)
 version: '3.8'
 
 services:
@@ -7,9 +8,11 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+      - model_storage:/app/storage  # Persistent volume for file storage
     environment:
       - MONGO_URI=mongodb://mongodb:27017
       - DB_NAME=model_database
+      - STORAGE_DIR=/app/storage
     depends_on:
       - mongodb
     networks:
@@ -29,4 +32,5 @@ networks:
     driver: bridge
 
 volumes:
-  mongodb_data:
+  mongodb_data:  # For MongoDB data
+  model_storage:  # For 3D model and texture files

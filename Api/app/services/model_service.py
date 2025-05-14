@@ -1,18 +1,12 @@
-# app/services/model_service.py
+# app/services/model_service.py (Hybrid Approach)
 """
-Service layer for 3D model operations
+Service layer for 3D model operations (hybrid filesystem/database approach)
 """
+from fastapi import UploadFile, HTTPException
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
-from fastapi import UploadFile, HTTPException
-import io
 
-from ..database import (
-    model_fs,
-    store_file_to_gridfs,
-    get_file_from_gridfs,
-    get_file_by_name,
-)
+from ..database import store_model_file, get_model_by_id, list_models, delete_model
 from ..models.model_schema import ModelMetadata, ModelResponse
 
 # Content types mapping
@@ -27,7 +21,7 @@ CONTENT_TYPES = {
 
 
 async def upload_model(file: UploadFile, metadata: ModelMetadata):
-    """Upload a 3D model to GridFS"""
+    """Upload a 3D model to filesystem and store metadata in database"""
     # Validate file extension
     file_ext = file.filename.split(".")[-1].lower()
     if file_ext not in ["fbx", "obj", "usd", "usda", "usdc", "usdz"]:
@@ -36,9 +30,6 @@ async def upload_model(file: UploadFile, metadata: ModelMetadata):
             detail="Unsupported file format. Must be .fbx, .obj, or .usd format",
         )
 
-    # Set content type based on extension
-    content_type = CONTENT_TYPES.get(file_ext, "application/octet-stream")
-
     # Read file content
     file_data = await file.read()
 
@@ -46,76 +37,81 @@ async def upload_model(file: UploadFile, metadata: ModelMetadata):
     if not metadata.format:
         metadata.format = file_ext
 
-    # Store the file in GridFS
-    file_id = await store_file_to_gridfs(
-        model_fs,
-        file.filename,
-        io.BytesIO(file_data),
-        content_type,
-        metadata.model_dump(),
+    # Store the file and metadata
+    file_id, file_path = await store_model_file(
+        file_data, file.filename, metadata.model_dump()
     )
 
     # Return file ID as string
-    return str(file_id)
+    return file_id
 
 
-async def get_model_by_id(model_id: str):
-    """Get a 3D model by its ID"""
+async def get_model_file_by_id(model_id: str):
+    """Get a 3D model file by its ID"""
     try:
-        file_id = ObjectId(model_id)
-    except InvalidId:
+        # Try to convert to ObjectId to validate format
+        _ = ObjectId(model_id)
+    except (InvalidId, TypeError):
         raise HTTPException(status_code=400, detail="Invalid model ID format")
 
+    # Get file path and metadata from database
+    file_path, document = await get_model_by_id(model_id)
+
+    if not file_path or not document:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    # Read file from filesystem
     try:
-        file_data, metadata = await get_file_from_gridfs(model_fs, file_id)
-        return file_data, metadata
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Model not found: {str(e)}")
-
-
-async def get_model_by_name(filename: str):
-    """Get a 3D model by its filename"""
-    try:
-        file_data, metadata = await get_file_by_name(model_fs, filename)
-        if not file_data:
-            raise HTTPException(status_code=404, detail="Model not found")
-        return file_data, metadata
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Model not found: {str(e)}")
-
-
-async def list_models(skip: int = 0, limit: int = 100, tag: str = None):
-    """List all 3D models with optional filtering by tag"""
-    cursor = model_fs.find({} if not tag else {"metadata.tags": tag})
-
-    # Skip and limit for pagination
-    cursor.skip(skip)
-    cursor.limit(limit)
-
-    models = []
-    async for model in cursor:
-        models.append(
-            ModelResponse(
-                id=str(model._id),
-                filename=model.filename,
-                metadata=ModelMetadata(**model.metadata),
-                uploaded_at=model.upload_date,
-                size=model.length,
-            )
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Model file not found in storage")
+    except PermissionError:
+        raise HTTPException(
+            status_code=500, detail="Permission denied when accessing model file"
         )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error reading model file: {str(e)}"
+        )
+
+    return file_data, document
+
+
+async def list_models_with_pagination(skip: int = 0, limit: int = 100, tag: str = None):
+    """List all 3D models with optional filtering by tag"""
+    # Get documents from database
+    documents = await list_models(skip, limit, tag)
+
+    # Convert to response model
+    models = []
+    for doc in documents:
+        model = ModelResponse(
+            id=str(doc["_id"]),
+            filename=doc["filename"],
+            metadata=ModelMetadata(**doc["metadata"]),
+            uploaded_at=doc["uploaded_at"],
+            size=doc["size"],
+        )
+        models.append(model)
 
     return models
 
 
-async def delete_model(model_id: str):
-    """Delete a 3D model by its ID"""
+async def delete_model_by_id(model_id: str):
+    """Delete a 3D model by its ID (both file and metadata)"""
     try:
-        file_id = ObjectId(model_id)
+        # Try to convert to ObjectId to validate format
+        _ = ObjectId(model_id)
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid model ID format")
-
-    try:
-        await model_fs.delete(file_id)
-        return {"message": "Model deleted successfully"}
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Model not found: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error validating model ID: {str(e)}")
+
+    # Delete the model
+    success = await delete_model(model_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    return {"message": "Model deleted successfully"}

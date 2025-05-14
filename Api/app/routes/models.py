@@ -1,6 +1,6 @@
-# app/routes/models.py
+# app/routes/models.py (Hybrid Approach)
 """
-API routes for 3D model operations
+API routes for 3D model operations (hybrid filesystem/database approach)
 """
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -11,10 +11,9 @@ import io
 from ..models.model_schema import ModelMetadata, ModelList
 from ..services.model_service import (
     upload_model,
-    get_model_by_id,
-    get_model_by_name,
-    list_models,
-    delete_model,
+    get_model_file_by_id,
+    list_models_with_pagination,
+    delete_model_by_id,
 )
 
 router = APIRouter(prefix="/models", tags=["3D Models"])
@@ -48,7 +47,7 @@ async def list_models_route(
     tag: Optional[str] = None,
 ):
     """List all 3D models with optional filtering"""
-    models = await list_models(skip, limit, tag)
+    models = await list_models_with_pagination(skip, limit, tag)
     return ModelList(models=models)
 
 
@@ -56,36 +55,40 @@ async def list_models_route(
 async def get_model_by_id_route(model_id: str):
     """Get a 3D model file by its ID"""
     try:
-        file_data, metadata = await get_model_by_id(model_id)
+        file_data, document = await get_model_file_by_id(model_id)
+
+        # Determine content type
+        content_type = "application/octet-stream"
+        if document and "metadata" in document and "format" in document["metadata"]:
+            format_ext = document["metadata"]["format"].lower()
+            content_type = CONTENT_TYPES.get(format_ext, "application/octet-stream")
 
         return StreamingResponse(
             io.BytesIO(file_data),
-            media_type=metadata.get("content_type", "application/octet-stream"),
+            media_type=content_type,
             headers={
-                "Content-Disposition": f"attachment; filename={metadata.get('filename', 'model')}"
+                "Content-Disposition": f"attachment; filename={document.get('filename', 'model')}"
             },
         )
     except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@router.get("/name/{filename}", response_class=StreamingResponse)
-async def get_model_by_name_route(filename: str):
-    """Get a 3D model file by its filename"""
-    try:
-        file_data, metadata = await get_model_by_name(filename)
-
-        return StreamingResponse(
-            io.BytesIO(file_data),
-            media_type=metadata.get("content_type", "application/octet-stream"),
-            headers={"Content-Disposition": f"attachment; filename={filename}"},
-        )
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{model_id}")
 async def delete_model_route(model_id: str):
     """Delete a 3D model by its ID"""
-    result = await delete_model(model_id)
+    result = await delete_model_by_id(model_id)
     return result
+
+
+# Define content types here to avoid circular imports
+CONTENT_TYPES = {
+    "fbx": "application/octet-stream",
+    "obj": "application/octet-stream",
+    "usd": "application/octet-stream",
+    "usda": "text/plain",
+    "usdc": "application/octet-stream",
+    "usdz": "application/octet-stream",
+}
