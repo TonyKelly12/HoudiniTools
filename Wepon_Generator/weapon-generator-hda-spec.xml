@@ -1,0 +1,69 @@
+# Weapon Generator HDA Specification
+# This file contains the instructions for setting up the HDA
+# Import this into Houdini by creating a new Digital Asset
+
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <tool name="WeaponGenerator" label="Weapon Generator" icon="SHELF_weapon_generator">
+    <helpURL>weapon_generator.html</helpURL>
+    <helpText>
+      Generates assembled weapons from online parts library using the 3D Weapon Assembly API.
+    </helpText>
+    
+    <script scriptType="python"><![CDATA[
+# Create the HDA in the current context
+
+import hou
+import os
+
+# Create a subnet to hold the tool
+node = hou.node('/obj').createNode('subnet', 'WeaponGenerator')
+
+# Set display flags
+node.setDisplayFlag(True)
+node.setSelectableInViewport(True)
+
+# Set color and shape
+node.setColor(hou.Color(0.8, 0.4, 0.0))
+
+# Let's add some basic interface for testing before turning it into an HDA
+node.addSpareParmTuple(hou.StringParmTemplate('api_url', 'API URL', 1, default_value=('http://localhost:8000',)))
+node.addSpareParmTuple(hou.StringParmTemplate('output_path', 'Output Path', 1, default_value=('$HIP/geo/weapons',)))
+
+# Create a basic network inside
+output = node.createNode('null', 'OUTPUT')
+output.setDisplayFlag(True)
+output.setRenderFlag(True)
+
+# Position nodes
+output.setPosition([0, 0])
+
+# Layout the network
+node.layoutChildren()
+
+# Select the node
+node.setCurrent(True, clear_all_selected=True)
+
+# Suggest turning the node into a Digital Asset
+if hou.ui.displayMessage("Would you like to turn this into a Digital Asset?", 
+                     buttons=("Yes", "No"), 
+                     default_choice=0,
+                     title="Create Digital Asset") == 0:
+    # Prompt for location to save the HDA
+    save_path = hou.ui.selectFile(title="Save HDA", file_type=hou.fileType.HDA)
+    
+    if save_path:
+        # Create the HDA definition
+        hou.hda.definitionForNode(node).save(save_path)
+        
+        # Tell the user what to do next
+        hou.ui.displayMessage(
+            "HDA created! Now you need to:\n"
+            "1. In Type Properties, add a Python Module section with the code from the 'Weapon Generator HDA Python Code' file\n"
+            "2. In Type Properties, add Help from the 'Weapon Generator HDA Help' file\n"
+            "3. Set OnCreated and Interface scripts to call the appropriate functions from the module",
+            title="HDA Setup"
+        )
+    ]]></script>
+  </tool>
+</shelfDocument>
