@@ -7,8 +7,6 @@ browse and select weapon parts from an online parts library.
 
 import hou
 import os
-import sys
-import json
 import requests
 from PySide2 import QtCore, QtWidgets, QtGui
 import tempfile
@@ -116,7 +114,13 @@ class WeaponAssemblyAPI:
 
         try:
             skip = (page - 1) * limit
-            url = f"{self.base_url}/models/weapon-parts?weapon_type={weapon_type}&part_type={part_type}&skip={skip}&limit={limit}"
+            url = (
+                f"{self.base_url}/models/weapon-parts"
+                f"?weapon_type={weapon_type}"
+                f"&part_type={part_type}"
+                f"&skip={skip}"
+                f"&limit={limit}"
+            )
             response = requests.get(url, headers=self.headers)
 
             if response.status_code == 200:
@@ -584,32 +588,44 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         if part_type not in self.part_widgets:
             return
 
-        # For now, just use a colored preview based on part type
-        # In a real implementation, this would load thumbnail images from the API
+        part_id = part.get("id")
 
+        # Create a QPixmap to display the icon
+        pixmap = QtGui.QPixmap(120, 120)
+        pixmap.fill(QtCore.Qt.transparent)
+
+        # Try to download the icon from the API
+        try:
+            icon_url = f"{self.api.base_url}/models/icons/{part_id}"
+            response = requests.get(icon_url, stream=True)
+
+            if response.status_code == 200:
+                # Load the image data
+                image_data = response.content
+                pixmap.loadFromData(image_data)
+
+                # Scale to fit
+                pixmap = pixmap.scaled(
+                    120, 120, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
+                )
+            else:
+                # Fallback to colored preview
+                self._create_colored_preview(pixmap, part_type, part)
+        except Exception as e:
+            print(f"Error loading icon: {str(e)}")
+            self._create_colored_preview(pixmap, part_type, part)
+
+        # Set the preview image
+        self.part_widgets[part_type]["preview"].setPixmap(pixmap)
+
+    def _create_colored_preview(self, pixmap, part_type, part):
+        """Create a colored preview with text as fallback"""
+        # Your existing preview generation code
         colors = {
             "handle": "#8B4513",  # Brown
-            "blade": "#C0C0C0",  # Silver
-            "guard": "#FFD700",  # Gold
-            "pommel": "#B87333",  # Copper
-            "head": "#A52A2A",  # Brown-red
-            "shaft": "#A0522D",  # Sienna
-            "limbs": "#DEB887",  # Burlywood
-            "string": "#F5F5DC",  # Beige
-            "body": "#CD853F",  # Peru
-            "border": "#D2B48C",  # Tan
-            "boss": "#DAA520",  # Goldenrod
-            "barrel": "#696969",  # DimGray
-            "trigger": "#708090",  # SlateGray
-            "magazine": "#778899",  # LightSlateGray
-            "sight": "#2F4F4F",  # DarkSlateGray
-            "stock": "#5F9EA0",  # CadetBlue
-            "grip": "#556B2F",  # DarkOliveGreen
+            # ... other colors ...
         }
-
         color = colors.get(part_type, "#888888")
-
-        pixmap = QtGui.QPixmap(120, 120)
         pixmap.fill(QtGui.QColor(color))
 
         # Add the part name
@@ -624,9 +640,6 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
 
         painter.drawText(pixmap.rect(), QtCore.Qt.AlignCenter, name)
         painter.end()
-
-        # Set the preview image
-        self.part_widgets[part_type]["preview"].setPixmap(pixmap)
 
     def navigate_parts(self, weapon_type, part_type, direction):
         """Navigate through parts (previous/next)"""
@@ -729,7 +742,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
 
         assembly_data = {
             "name": f"Generated {weapon_type.capitalize()}",
-            "description": f"Generated using Weapon Generator HDA",
+            "description": "Generated using Weapon Generator HDA",
             "weapon_type": weapon_type,
             "parts": assembly_parts,
             "created_at": None,  # Will be set by API
@@ -840,11 +853,10 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
 
             # First make sure the output directory exists
             out_dir = os.path.join(os.path.dirname(node.path()), "weapon_parts")
-            if not os.path.exists(out_dir):
-                try:
-                    os.makedirs(out_dir)
-                except:
-                    pass
+            try:
+                os.makedirs(out_dir)
+            except OSError:
+                pass
 
             for part_type, model_path in model_files.items():
                 # Find part data in assembly

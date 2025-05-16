@@ -7,6 +7,9 @@ from fastapi.responses import StreamingResponse
 from typing import Optional, List
 import json
 import io
+import os
+import uuid
+from ..config import STORAGE_BASE_DIR
 
 from ..models.model_schema import (
     ModelMetadata,
@@ -41,6 +44,7 @@ CONTENT_TYPES = {
 @router.post("/", response_model=dict)
 async def upload_model_route(
     file: UploadFile = File(...),
+    icon: UploadFile = File(...),
     metadata_json: str = Form(...),
 ):
     """
@@ -68,6 +72,18 @@ async def upload_model_route(
         # Parse metadata JSON
         metadata_dict = json.loads(metadata_json)
         metadata = ModelMetadata(**metadata_dict)
+
+        # Process icon file
+        icon_data = await icon.read()
+        icon_filename = f"icon_{uuid.uuid4()}.png"
+        icon_path = os.path.join(STORAGE_BASE_DIR, "icons", icon_filename)
+
+        # Save icon file
+        with open(icon_path, "wb") as f:
+            f.write(icon_data)
+
+        # Add icon path to metadata
+        metadata.icon_path = f"/icons/{icon_filename}"
 
         # Upload the model
         file_id = await upload_model(file, metadata)
@@ -111,6 +127,34 @@ async def list_models_route(
         page=result["page"],
         page_size=result["page_size"],
     )
+
+
+@router.get("/icons/{model_id}", response_class=StreamingResponse)
+async def get_model_icon_route(
+    model_id: str = Path(..., description="ID of the model")
+):
+    # Get model metadata
+    _, document = await get_model_file_by_id(model_id)
+
+    if (
+        not document
+        or "metadata" not in document
+        or "icon_path" not in document["metadata"]
+    ):
+        # Return default icon
+        default_icon_path = os.path.join(STORAGE_BASE_DIR, "icons", "default.png")
+        with open(default_icon_path, "rb") as f:
+            file_data = f.read()
+        return StreamingResponse(io.BytesIO(file_data), media_type="image/png")
+
+    # Get icon path from metadata
+    icon_path = document["metadata"]["icon_path"]
+    full_path = os.path.join(STORAGE_BASE_DIR, icon_path.lstrip("/"))
+
+    with open(full_path, "rb") as f:
+        file_data = f.read()
+
+    return StreamingResponse(io.BytesIO(file_data), media_type="image/png")
 
 
 @router.get("/weapon-parts", response_model=List[ModelResponse])
