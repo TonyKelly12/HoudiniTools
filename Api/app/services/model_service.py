@@ -4,13 +4,13 @@ Service layer for 3D model operations with weapon system support
 """
 import os
 import re
-from fastapi import UploadFile, HTTPException
+import requests
+from fastapi import HTTPException
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
-from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-from ..database import store_model_file, get_model_by_id, list_models, delete_model
+from ..database import get_model_by_id, list_models, delete_model
 from ..models.model_schema import (
     ModelMetadata,
     ModelResponse,
@@ -77,61 +77,57 @@ def generate_model_path(metadata: ModelMetadata) -> str:
         return f"{category}/misc"
 
 
-async def upload_model(file: UploadFile, metadata: ModelMetadata) -> str:
-    """Upload a 3D model to filesystem and store metadata in database"""
-    # Validate file extension
-    file_ext = file.filename.split(".")[-1].lower()
-    if file_ext not in CONTENT_TYPES.keys():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file format. Must be one of: {', '.join(CONTENT_TYPES.keys())}",
-        )
+def upload_model(self, model_file_path, icon_file_path, metadata):
+    """Upload a model file with metadata to the API"""
+    try:
+        print(f"Uploading model: {model_file_path}")
+        print(f"With icon: {icon_file_path}")
 
-    # Read file content
-    file_data = await file.read()
+        url = f"{self.base_url}/models/"
+        print(f"Upload URL: {url}")
 
-    # Update metadata with file format if not already set
-    if not metadata.format:
-        metadata.format = file_ext
+        # Prepare files
+        with open(model_file_path, "rb") as model_file, open(
+            icon_file_path, "rb"
+        ) as icon_file:
+            # Prepare files dict
+            files = {
+                "file": (
+                    os.path.basename(model_file_path),
+                    model_file,
+                    "application/octet-stream",
+                ),
+                "icon": (os.path.basename(icon_file_path), icon_file, "image/png"),
+            }
 
-    # Sanitize the filename
-    sanitized_filename = sanitize_filename(file.filename)
+            # Prepare metadata
+            import json
 
-    # Validate weapon part metadata if applicable
-    if metadata.is_weapon_part and not metadata.weapon_part_metadata:
-        raise HTTPException(
-            status_code=400,
-            detail="Weapon part metadata is required when is_weapon_part is true",
-        )
+            data = {"metadata_json": json.dumps(metadata)}
 
-    # Generate the proper storage path
-    storage_path = generate_model_path(metadata)
+            # Make the request with timeout
+            print("Sending upload request...")
+            response = requests.post(url, files=files, data=data, timeout=120)
+            print(f"Response status: {response.status_code}")
 
-    # Add timestamp to filename to ensure uniqueness
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    base_name, extension = os.path.splitext(sanitized_filename)
-    unique_filename = f"{base_name}_{timestamp}{extension}"
+            if response.status_code == 200:
+                try:
+                    result = response.json()
+                    print(f"Upload successful. Result: {result}")
+                    return result
+                except Exception as json_error:
+                    print(f"Error parsing response JSON: {str(json_error)}")
+                    print(f"Response text: {response.text[:500]}")
+                    return None
+            else:
+                print(f"Upload failed: {response.status_code} - {response.text[:500]}")
+                return None
+    except Exception as e:
+        import traceback
 
-    # Additional metadata for the database
-    additional_metadata = {
-        "original_filename": file.filename,
-        "sanitized_filename": sanitized_filename,
-        "storage_path": storage_path,
-        "content_type": CONTENT_TYPES.get(file_ext, "application/octet-stream"),
-        "unique_filename": unique_filename,
-    }
-
-    # Store the file and metadata
-    metadata_dict = metadata.model_dump()
-    metadata_dict.update(additional_metadata)
-
-    # Pass path info to database layer
-    file_id, file_path = await store_model_file(
-        file_data, unique_filename, metadata_dict, storage_path
-    )
-
-    # Return file ID as string
-    return file_id
+        print(f"Error uploading model: {str(e)}")
+        traceback.print_exc()
+        return None
 
 
 async def get_model_file_by_id(model_id: str):

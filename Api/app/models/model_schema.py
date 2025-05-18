@@ -71,6 +71,10 @@ class ModelMetadata(BaseModel):
     polycount: Optional[int] = None
     is_weapon_part: bool = False
     weapon_part_metadata: Optional[WeaponPartMetadata] = None
+    icon_path: Optional[str] = None
+    model_config = {
+        "protected_namespaces": ()
+    }
 
 
 class TextureType(str, Enum):
@@ -148,7 +152,7 @@ class TextureList(BaseModel):
 class WeaponAssemblyItem(BaseModel):
     """Item in a weapon assembly"""
 
-    model_id: str
+    id: str
     part_type: WeaponPartType
     position: Dict[str, float] = Field(default_factory=lambda: {"x": 0, "y": 0, "z": 0})
     rotation: Dict[str, float] = Field(default_factory=lambda: {"x": 0, "y": 0, "z": 0})

@@ -10,6 +10,7 @@ services:
       - MONGO_URI=mongodb://mongodb:27017
       - DB_NAME=model_database
       - STORAGE_DIR=/app/storage
+      - UVICORN_TIMEOUT=300
     depends_on:
       - mongodb
     networks:
