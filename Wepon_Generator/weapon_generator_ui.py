@@ -10,6 +10,7 @@ import os
 import json
 import requests
 from PySide2 import QtCore, QtWidgets, QtGui
+from PySide2.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 import tempfile
 import threading
 import time
@@ -122,12 +123,29 @@ class WeaponAssemblyAPI:
                 f"&skip={skip}"
                 f"&limit={limit}"
             )
+            print(f"Requesting URL: {url}")
             response = requests.get(url, headers=self.headers)
 
             if response.status_code == 200:
-                data = response.json()
-                self._update_cache(cache_key, data)
-                return data
+                try:
+                    data = response.json()
+                    # Handle both direct list responses and paginated responses
+                    if isinstance(data, dict) and "models" in data:
+                        parts = data["models"]
+                        print(f"Retrieved {len(parts)} parts from paginated response")
+                    elif isinstance(data, list):
+                        parts = data
+                        print(f"Retrieved {len(parts)} parts from list response")
+                    else:
+                        print(f"Unexpected response format: {type(data)}")
+                        parts = []
+
+                    self._update_cache(cache_key, parts)
+                    return parts
+                except ValueError as e:
+                    print(f"JSON parsing error: {str(e)}")
+                    print(f"Response text: {response.text[:200]}")
+                    return []
             else:
                 print(f"API Error ({response.status_code}): {response.text}")
                 return []
@@ -563,12 +581,25 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         ).start()
 
     def _fetch_parts(self, weapon_type, part_type, page):
-        """Fetch parts in a background thread"""
+        """Fetch parts in a background thread with better error handling and debugging"""
         try:
+            print(f"Fetching {weapon_type} {part_type} parts (page {page})...")
             parts = self.api.get_weapon_parts(weapon_type, part_type, page=page)
 
+            if isinstance(parts, dict) and "models" in parts:
+                # Handle the case where the API returns a dictionary with "models" key
+                parts_data = parts["models"]
+            elif isinstance(parts, list):
+                # Handle the case where the API returns a list directly
+                parts_data = parts
+            else:
+                print(f"Warning: Unexpected parts data format: {type(parts)}")
+                parts_data = []
+
+            print(f"Received {len(parts_data)} parts for {part_type}")
+
             # Use signal to update UI from main thread
-            self.partsLoaded.emit(part_type, parts)
+            self.partsLoaded.emit(part_type, parts_data)
         except Exception as e:
             print(f"Error fetching parts: {str(e)}")
             self.partsLoaded.emit(part_type, [])
@@ -580,30 +611,59 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
 
         widgets = self.part_widgets[part_type]
 
+        # Debug print
+        print(f"Updating display for {part_type} with {len(parts_data)} parts")
+
         # Check if we have parts
-        if isinstance(parts_data, list) and parts_data:
-            # Store first part in the current selection
-            part = parts_data[0]
-            self.selected_parts[part_type] = part.get("id")
-
-            # Display part info
-            name = part.get("metadata", {}).get("name", "Unknown")
-            widgets["info"].setText(name)
-
-            # Update preview (if available)
-            self.update_part_preview(part_type, part)
-
+        if parts_data and len(parts_data) > 0:
             # Store all parts for this type
             self.part_models[part_type] = parts_data
 
+            # If we don't already have a selection for this part type, select the first part
+            if part_type not in self.selected_parts or not self.selected_parts[part_type]:
+                part = parts_data[0]
+                self.selected_parts[part_type] = part.get("id")
+
+                # Display part info
+                name = part.get("metadata", {}).get("name", "Unknown")
+                widgets["info"].setText(name)
+
+                # Update preview (if available)
+                self.update_part_preview(part_type, part)
+            else:
+                # We already have a selection, find that part and display it
+                part_id = self.selected_parts[part_type]
+                found = False
+
+                for part in parts_data:
+                    if part.get("id") == part_id:
+                        # Display part info
+                        name = part.get("metadata", {}).get("name", "Unknown")
+                        widgets["info"].setText(name)
+
+                        # Update preview
+                        self.update_part_preview(part_type, part)
+                        found = True
+                        break
+                    
+                # If we couldn't find the selected part in the new data, reset to the first one
+                if not found and parts_data:
+                    part = parts_data[0]
+                    self.selected_parts[part_type] = part.get("id")
+
+                    # Display part info
+                    name = part.get("metadata", {}).get("name", "Unknown")
+                    widgets["info"].setText(name)
+
+                    # Update preview
+                    self.update_part_preview(part_type, part)
+
             # Enable/disable navigation buttons
-            widgets["prev_btn"].setEnabled(self.current_pages[part_type] > 1)
-            widgets["next_btn"].setEnabled(
-                len(parts_data) >= 10
-            )  # Assuming page size of 10
+            widgets["prev_btn"].setEnabled(self.current_pages[part_type] > 1 or len(parts_data) > 1)
+            widgets["next_btn"].setEnabled(self.has_more_pages[part_type] or len(parts_data) > 1)
 
             # Update pagination status
-            self.has_more_pages[part_type] = len(parts_data) >= 10
+            self.has_more_pages[part_type] = len(parts_data) >= 10  # Assuming page size of 10
         else:
             # No parts found
             widgets["info"].setText("No parts found")
@@ -618,39 +678,104 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                 del self.selected_parts[part_type]
 
     def update_part_preview(self, part_type, part):
-        """Update the preview for a part"""
+        """Update the preview for a part with improved image handling"""
         if part_type not in self.part_widgets:
             return
 
         part_id = part.get("id")
+        preview_label = self.part_widgets[part_type]["preview"]
 
-        # Create a QPixmap to display the icon
-        pixmap = QtGui.QPixmap(120, 120)
-        pixmap.fill(QtCore.Qt.transparent)
+        # Create a placeholder pixmap
+        placeholder = QtGui.QPixmap(120, 120)
+        placeholder.fill(QtCore.Qt.transparent)
 
         # Try to download the icon from the API
         try:
             icon_url = f"{self.api.base_url}/models/icons/{part_id}"
-            response = requests.get(icon_url, stream=True)
 
-            if response.status_code == 200:
-                # Load the image data
-                image_data = response.content
-                pixmap.loadFromData(image_data)
+            # Use QNetworkAccessManager for more reliable image loading
+            if not hasattr(self, 'network_manager'):
+                self.network_manager = QtNetwork.QNetworkAccessManager()
+                self.network_manager.finished.connect(self.handle_network_response)
 
-                # Scale to fit
-                pixmap = pixmap.scaled(
-                    120, 120, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
-                )
-            else:
-                # Fallback to colored preview
-                self._create_colored_preview(pixmap, part_type, part)
+            # Store the request context
+            request = QtNetwork.QNetworkRequest(QtCore.QUrl(icon_url))
+            request.setAttribute(QtNetwork.QNetworkRequest.User, part_type)
+            self.network_manager.get(request)
+
+            # Show loading indicator while waiting for image
+            spinner_pixmap = self.create_loading_indicator()
+            preview_label.setPixmap(spinner_pixmap)
+
         except Exception as e:
-            print(f"Error loading icon: {str(e)}")
-            self._create_colored_preview(pixmap, part_type, part)
+            print(f"Error initiating icon download: {str(e)}")
+            self._create_colored_preview(placeholder, part_type, part)
+            preview_label.setPixmap(placeholder)
 
-        # Set the preview image
-        self.part_widgets[part_type]["preview"].setPixmap(pixmap)
+    def handle_network_response(self, reply):
+        """Handle the network response for image downloads"""
+        part_type = reply.request().attribute(QtNetwork.QNetworkRequest.User)
+
+        if part_type not in self.part_widgets:
+            return
+
+        preview_label = self.part_widgets[part_type]["preview"]
+
+        # Get error if any
+        error = reply.error()
+
+        if error == QtNetwork.QNetworkReply.NoError:
+            try:
+                # Read the image data
+                image_data = reply.readAll()
+
+                # Create QImage first to validate and handle both PNG and JPEG
+                image = QtGui.QImage()
+                if image.loadFromData(image_data):
+                    # Convert to pixmap if valid
+                    pixmap = QtGui.QPixmap.fromImage(image)
+                    # Scale to fit
+                    pixmap = pixmap.scaled(
+                        120, 120, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
+                    )
+                    preview_label.setPixmap(pixmap)
+                else:
+                    # Invalid image data
+                    raise Exception("Invalid image data")
+
+            except Exception as e:
+                print(f"Error processing image data: {str(e)}")
+                # Fall back to colored preview if we have a part in our data
+                for part_type_key, parts in self.part_models.items():
+                    if part_type_key == part_type:
+                        for part in parts:
+                            if part.get("id") == reply.url().toString().split('/')[-1]:
+                                placeholder = QtGui.QPixmap(120, 120)
+                                placeholder.fill(QtCore.Qt.transparent)
+                                self._create_colored_preview(placeholder, part_type, part)
+                                preview_label.setPixmap(placeholder)
+                                return
+
+                # Default fallback
+                self.set_default_preview(preview_label)
+        else:
+            print(f"Network error: {reply.errorString()}")
+            self.set_default_preview(preview_label)
+
+    def create_loading_indicator(self):
+        """Create a loading spinner indicator"""
+        pixmap = QtGui.QPixmap(120, 120)
+        pixmap.fill(QtCore.Qt.transparent)
+
+        painter = QtGui.QPainter(pixmap)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#888888")))
+        painter.setBrush(QtGui.QBrush(QtCore.Qt.NoBrush))
+        painter.drawEllipse(40, 40, 40, 40)
+        painter.setFont(QtGui.QFont("Arial", 10))
+        painter.drawText(pixmap.rect(), QtCore.Qt.AlignCenter, "Loading...")
+        painter.end()
+
+        return pixmap    
 
     def _create_colored_preview(self, pixmap, part_type, part):
         """Create a colored preview with text as fallback"""
@@ -676,52 +801,73 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         painter.end()
 
     def navigate_parts(self, weapon_type, part_type, direction):
-        """Navigate through parts (previous/next)"""
+        """Navigate through parts (previous/next) with improved cycling"""
         if part_type not in self.part_models:
             return
 
-        # If we have cached parts, cycle through them
         parts = self.part_models.get(part_type, [])
+        if not parts:
+            return  # No parts to navigate through
 
-        if parts:
-            # Find current selected index
-            current_id = self.selected_parts.get(part_type)
-            current_index = -1
+        # Debug print to see what we're working with
+        print(f"Navigate {part_type}: {len(parts)} parts available, direction: {direction}")
 
-            for i, part in enumerate(parts):
-                if part.get("id") == current_id:
-                    current_index = i
-                    break
+        # Find current selected index
+        current_id = self.selected_parts.get(part_type)
+        current_index = -1
 
-            if current_index >= 0:
-                # Calculate new index
-                new_index = current_index + direction
+        for i, part in enumerate(parts):
+            if part.get("id") == current_id:
+                current_index = i
+                break
 
-                # If we need to load more pages
-                if new_index < 0:
-                    # Load previous page if available
-                    if self.current_pages[part_type] > 1:
-                        self.current_pages[part_type] -= 1
-                        self.load_parts(weapon_type, part_type)
+        # If we couldn't find the current part, reset to the first one
+        if current_index < 0 and parts:
+            current_index = 0
+
+        # Calculate new index with proper wrapping
+        if direction < 0:  # UP button (previous)
+            if current_index <= 0:
+                # We need to load the previous page if it exists
+                if self.current_pages[part_type] > 1:
+                    self.current_pages[part_type] -= 1
+                    print(f"Loading previous page for {part_type}: page {self.current_pages[part_type]}")
+                    self.load_parts(weapon_type, part_type)
                     return
-
-                if new_index >= len(parts):
-                    # Load next page if available
-                    if self.has_more_pages[part_type]:
-                        self.current_pages[part_type] += 1
-                        self.load_parts(weapon_type, part_type)
+                else:
+                    # Wrap around to the last item if we're at the first page
+                    new_index = len(parts) - 1
+            else:
+                new_index = current_index - 1
+        else:  # DOWN button (next)
+            if current_index >= len(parts) - 1:
+                # We need to load the next page if it exists
+                if self.has_more_pages[part_type]:
+                    self.current_pages[part_type] += 1
+                    print(f"Loading next page for {part_type}: page {self.current_pages[part_type]}")
+                    self.load_parts(weapon_type, part_type)
                     return
+                else:
+                    # Wrap around to the first item if we're at the last page
+                    new_index = 0
+            else:
+                new_index = current_index + 1
 
-                # Update selection to the new index
-                new_part = parts[new_index]
-                self.selected_parts[part_type] = new_part.get("id")
+        print(f"Navigating from index {current_index} to {new_index}")
 
-                # Update display
-                if part_type in self.part_widgets:
-                    widgets = self.part_widgets[part_type]
-                    name = new_part.get("metadata", {}).get("name", "Unknown")
-                    widgets["info"].setText(name)
-                    self.update_part_preview(part_type, new_part)
+        # Update selection to the new index
+        if 0 <= new_index < len(parts):
+            new_part = parts[new_index]
+            self.selected_parts[part_type] = new_part.get("id")
+
+            # Update display
+            if part_type in self.part_widgets:
+                widgets = self.part_widgets[part_type]
+                name = new_part.get("metadata", {}).get("name", "Unknown")
+                widgets["info"].setText(name)
+                self.update_part_preview(part_type, new_part)
+        else:
+            print(f"Warning: Invalid new index {new_index} for {part_type}")
 
     def reset_selection(self):
         """Reset part selection"""
