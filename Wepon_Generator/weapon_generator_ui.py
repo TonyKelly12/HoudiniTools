@@ -1005,9 +1005,8 @@ def show_weapon_generator(node_path=None):
 class WeaponPartUploadWidget(QtWidgets.QWidget):
     """Widget for uploading new weapon parts to the API"""
 
-    uploadCompleted = QtCore.Signal(
-        bool, str
-    )  # Signal for upload completion (success, message)
+    uploadCompleted = QtCore.Signal(bool, str)  
+    progressUpdated = QtCore.Signal(int)  
 
     def __init__(self, parent=None, api=None):
         super(WeaponPartUploadWidget, self).__init__(parent)
@@ -1252,21 +1251,15 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
         """Upload the part to the API"""
         # Validate required fields
         if not self.name_input.text().strip():
-            QtWidgets.QMessageBox.warning(
-                self, "Missing Information", "Please enter a name for the part."
-            )
+            QtWidgets.QMessageBox.warning(self, "Missing Information", "Please enter a name for the part.")
             return
 
         if not self.model_path_label.text():
-            QtWidgets.QMessageBox.warning(
-                self, "Missing File", "Please select a model file to upload."
-            )
+            QtWidgets.QMessageBox.warning(self, "Missing File", "Please select a model file to upload.")
             return
 
         if not self.icon_path_label.text():
-            QtWidgets.QMessageBox.warning(
-                self, "Missing File", "Please select an icon/preview image."
-            )
+            QtWidgets.QMessageBox.warning(self, "Missing File", "Please select an icon/preview image.")
             return
 
         # Prepare metadata
@@ -1274,11 +1267,7 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
 
         material_slots = None
         if self.material_slots_input.text().strip():
-            material_slots = [
-                slot.strip()
-                for slot in self.material_slots_input.text().split(",")
-                if slot.strip()
-            ]
+            material_slots = [slot.strip() for slot in self.material_slots_input.text().split(",") if slot.strip()]
 
         # Prepare weapon part metadata
         weapon_part_metadata = None
@@ -1287,19 +1276,15 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
                 "weapon_type": self.weapon_type_combo.currentData(),
                 "part_type": self.part_type_combo.currentData(),
                 "is_attachment": False,
-                "material_slots": material_slots,
+                "material_slots": material_slots
             }
 
             # Add variant info if provided
             if self.variant_name_input.text().strip():
-                weapon_part_metadata["variant_name"] = (
-                    self.variant_name_input.text().strip()
-                )
+                weapon_part_metadata["variant_name"] = self.variant_name_input.text().strip()
 
             if self.variant_group_input.text().strip():
-                weapon_part_metadata["variant_group"] = (
-                    self.variant_group_input.text().strip()
-                )
+                weapon_part_metadata["variant_group"] = self.variant_group_input.text().strip()
 
         # Prepare metadata JSON
         metadata = {
@@ -1307,7 +1292,7 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
             "description": self.description_input.toPlainText().strip(),
             "format": os.path.splitext(self.model_path_label.text())[1][1:].lower(),
             "category": self.category_input.text().strip() or "weapons",
-            "is_weapon_part": self.is_weapon_part.isChecked(),
+            "is_weapon_part": self.is_weapon_part.isChecked()
         }
 
         if tags:
@@ -1320,106 +1305,184 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
         self.setEnabled(False)
 
         # Show progress dialog
-        progress = QtWidgets.QProgressDialog(
+        self.progress_dialog = QtWidgets.QProgressDialog(
             "Uploading weapon part...", "Cancel", 0, 100, self
         )
-        progress.setWindowModality(QtCore.Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(10)
+        self.progress_dialog.setWindowModality(QtCore.Qt.WindowModal)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.setValue(10)
+        self.progress_dialog.canceled.connect(self.cancel_upload)
+
+        # Connect progress signal to update dialog
+        self.progressUpdated.connect(self.progress_dialog.setValue)
 
         # Start upload in a background thread
-        threading.Thread(
+        self.upload_thread = threading.Thread(
             target=self._do_upload,
             args=(
                 self.model_path_label.text(),
                 self.icon_path_label.text(),
                 metadata,
-                progress,
-            ),
-        ).start()
+                self.progress_dialog
+            )
+        )
+        self.upload_thread.daemon = True
+        self.upload_thread.start()
+
+    def cancel_upload(self):
+        """Handle user cancellation of upload"""
+        # Signal cancellation to the user
+        self.uploadCompleted.emit(False, "Upload cancelled by user")
+
+    def on_upload_completed(self, success, message):
+        """Handle upload completion - triggered from signal"""
+        # Re-enable UI
+        self.setEnabled(True)
+
+        # Close progress dialog if it exists
+        if hasattr(self, 'progress_dialog') and self.progress_dialog:
+            self.progress_dialog.close()
+
+        if success:
+            # Show success message
+            QtWidgets.QMessageBox.information(self, "Upload Complete", message)
+
+            # Clear form for next upload
+            self.clear_form()
+        else:
+            # Show error message
+            QtWidgets.QMessageBox.warning(self, "Upload Failed", message)
 
     def _do_upload(self, model_path, icon_path, metadata, progress):
-        """Perform the upload in a background thread"""
+        """Perform the upload in a background thread with better logging"""
         try:
+            print("Starting upload process...")
+            
             # Update progress
-            progress.setValue(20)
-
-            # Prepare files
-            with open(model_path, "rb") as model_file:
-                model_data = model_file.read()
-
-            with open(icon_path, "rb") as icon_file:
-                icon_data = icon_file.read()
-
+            self.progressUpdated.emit(10)
+            print("Progress: 10% - Starting file preparation")
+            
+            # Check if files exist
+            if not os.path.exists(model_path):
+                print(f"Error: Model file not found: {model_path}")
+                self.uploadCompleted.emit(False, f"Model file not found: {model_path}")
+                return
+                
+            if not os.path.exists(icon_path):
+                print(f"Error: Icon file not found: {icon_path}")
+                self.uploadCompleted.emit(False, f"Icon file not found: {icon_path}")
+                return
+            
+            # Remove any icon_path field from metadata to prevent errors
+            if "icon_path" in metadata:
+                del metadata["icon_path"]
+                
+            try:
+                # Try opening the files to ensure they're accessible
+                with open(model_path, 'rb') as test_model:
+                    model_size = os.path.getsize(model_path)
+                    print(f"Model file opened successfully. Size: {model_size} bytes")
+                    
+                with open(icon_path, 'rb') as test_icon:
+                    icon_size = os.path.getsize(icon_path)
+                    print(f"Icon file opened successfully. Size: {icon_size} bytes")
+            except Exception as file_error:
+                print(f"File access error: {str(file_error)}")
+                self.uploadCompleted.emit(False, f"File access error: {str(file_error)}")
+                return
+                
             # Update progress
-            progress.setValue(40)
-
-            # Here we would normally upload to the API
-            # Using the API client provided by the parent widget
-            if self.api and hasattr(self.api, "base_url"):
+            self.progressUpdated.emit(20)
+            print("Progress: 20% - Files prepared, creating request")
+            
+            import requests
+            import json
+            
+            # Convert metadata to JSON
+            metadata_json = json.dumps(metadata)
+            print(f"Metadata JSON prepared: {metadata_json[:100]}...")
+            
+            # Build URL
+            if self.api and hasattr(self.api, 'base_url'):
                 url = f"{self.api.base_url}/models/"
-
-                # Prepare the multipart form data
-                import requests
-                from requests_toolbelt.multipart.encoder import MultipartEncoder
-
-                # Convert metadata to JSON
-                import json
-
-                metadata_json = json.dumps(metadata)
-
-                # Prepare the multipart form
-                multipart_data = MultipartEncoder(
-                    fields={
-                        "file": (
-                            os.path.basename(model_path),
-                            model_data,
-                            "application/octet-stream",
-                        ),
-                        "icon": (os.path.basename(icon_path), icon_data, "image/png"),
-                        "metadata_json": metadata_json,
-                    }
-                )
-
-                # Set the content type
-                headers = {"Content-Type": multipart_data.content_type}
-
-                # Update progress
-                progress.setValue(60)
-
-                # Make the request
-                response = requests.post(url, data=multipart_data, headers=headers)
-
-                # Update progress
-                progress.setValue(80)
-
-                # Check response
-                if response.status_code == 200:
-                    # Success
-                    result = response.json()
-                    self.uploadCompleted.emit(
-                        True,
-                        f"Upload successful! Part ID: {result.get('id', 'unknown')}",
-                    )
-                else:
-                    # Error
-                    self.uploadCompleted.emit(
-                        False,
-                        f"Upload failed: {response.status_code} - {response.text}",
-                    )
+                print(f"Target URL: {url}")
             else:
-                # No API client available
+                print("Error: API client not available or missing base_url")
                 self.uploadCompleted.emit(False, "API client not available")
-
-            # Update final progress
-            progress.setValue(100)
-
+                return
+                
+            # Update progress
+            self.progressUpdated.emit(30)
+            print("Progress: 30% - Request prepared, opening files for upload")
+            
+            try:
+                # Prepare files with explicit mode and proper closure
+                model_file = open(model_path, 'rb')
+                icon_file = open(icon_path, 'rb')
+                
+                files = {
+                    'file': (os.path.basename(model_path), model_file, 'application/octet-stream'),
+                    'icon': (os.path.basename(icon_path), icon_file, 'image/png')
+                }
+                
+                data = {
+                    'metadata_json': metadata_json
+                }
+                
+                # Update progress
+                self.progressUpdated.emit(40)
+                print("Progress: 40% - Files opened, sending request")
+                
+                # Set timeout to prevent hanging forever
+                try:
+                    print("Sending POST request...")
+                    response = requests.post(url, files=files, data=data, timeout=120)
+                    print(f"Request completed with status code: {response.status_code}")
+                    
+                    # Update progress
+                    self.progressUpdated.emit(90)
+                    print("Progress: 90% - Request completed, processing response")
+                    
+                    if response.status_code == 200:
+                        try:
+                            result = response.json()
+                            print(f"Response JSON: {result}")
+                            self.uploadCompleted.emit(True, f"Part ID: {result.get('id', 'unknown')}")
+                        except Exception as json_error:
+                            print(f"Error parsing response JSON: {str(json_error)}")
+                            print(f"Response text: {response.text[:500]}")
+                            self.uploadCompleted.emit(False, f"Error parsing response: {str(json_error)}")
+                    else:
+                        print(f"Error response: {response.status_code} - {response.text[:500]}")
+                        self.uploadCompleted.emit(False, f"Upload failed with status {response.status_code}: {response.text[:200]}")
+                except requests.exceptions.Timeout:
+                    print("Request timed out after 120 seconds")
+                    self.uploadCompleted.emit(False, "Request timed out (2 minutes)")
+                except requests.exceptions.ConnectionError as conn_error:
+                    print(f"Connection error: {str(conn_error)}")
+                    self.uploadCompleted.emit(False, f"Connection error: {str(conn_error)}")
+                except Exception as req_error:
+                    print(f"Request error: {str(req_error)}")
+                    self.uploadCompleted.emit(False, f"Request error: {str(req_error)}")
+                finally:
+                    # Ensure files are closed
+                    model_file.close()
+                    icon_file.close()
+                    print("Files closed")
+                    
+            except Exception as file_open_error:
+                print(f"Error opening files for upload: {str(file_open_error)}")
+                self.uploadCompleted.emit(False, f"Error opening files: {str(file_open_error)}")
+                
         except Exception as e:
-            # Handle any exceptions
             import traceback
-
+            print("Exception in upload process:")
             traceback.print_exc()
-            self.uploadCompleted.emit(False, f"Upload failed: {str(e)}")
+            self.uploadCompleted.emit(False, f"Upload error: {str(e)}")
+        finally:
+            # Ensure progress is completed in all cases
+            self.progressUpdated.emit(100)
+            print("Upload process completed")
 
     def on_upload_completed(self, success, message):
         """Handle upload completion - triggered from signal"""
