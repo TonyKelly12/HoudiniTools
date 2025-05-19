@@ -556,20 +556,20 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         # Create a simple icon with text
         pixmap = QtGui.QPixmap(120, 120)
         pixmap.fill(QtCore.Qt.transparent)
-    
+
         painter = QtGui.QPainter(pixmap)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        
+
         # Draw a subtle background
         painter.setBrush(QtGui.QBrush(QtGui.QColor(70, 70, 70, 180)))
         painter.setPen(QtCore.Qt.NoPen)
         painter.drawRoundedRect(5, 5, 110, 110, 8, 8)
-        
+
         # Draw text
         painter.setPen(QtGui.QPen(QtGui.QColor("#BBBBBB")))
         painter.setFont(QtGui.QFont("Arial", 12))
         painter.drawText(pixmap.rect(), QtCore.Qt.AlignCenter, "No\nPreview")
-        
+
         painter.end()
         label.setPixmap(pixmap)
 
@@ -1118,36 +1118,27 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
             node = None
             if self.node_path:
                 node = hou.node(self.node_path)
-
+    
             if not node:
                 # Try to get parent node in /obj context
                 node = hou.node("/obj")
-
+    
             # Print node path and type for debugging
             print(f"Parent node: {node.path()}, Type: {node.type().name()}")
-
-            # Create a new null node to hold our output
-            # Use fully qualified node type names
-            weapon_node = node.createNode("null", "OUTPUT_Weapon")
-            print(f"Created weapon node: {weapon_node.path()}")
-
-            # Create merge node to combine parts
-            merge_node = node.createNode("merge", "MERGE_Parts")
+    
+            # Create a merge node to combine parts
+            merge_node = node.createNode("merge", "merge1")
             print(f"Created merge node: {merge_node.path()}")
-
-            # Connect merge to weapon
+    
+            # Create a new null node for the output
+            weapon_node = node.createNode("null", "Weapon_output")
+            print(f"Created weapon node: {weapon_node.path()}")
+    
+            # Connect merge to weapon output
             weapon_node.setInput(0, merge_node)
-
+    
             # Add each part
             input_index = 0
-
-            # First make sure the output directory exists
-            out_dir = os.path.join(os.path.dirname(node.path()), "weapon_parts")
-            try:
-                os.makedirs(out_dir)
-            except OSError:
-                pass
-
             for part_type, model_path in model_files.items():
                 # Find part data in assembly
                 part_data = None
@@ -1155,69 +1146,76 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                     if part.get("part_type") == part_type:
                         part_data = part
                         break
-
+                    
                 if not part_data:
                     continue
-
+                
                 # Get position, rotation, scale
                 position = part_data.get("position", {"x": 0, "y": 0, "z": 0})
                 rotation = part_data.get("rotation", {"x": 0, "y": 0, "z": 0})
                 scale = part_data.get("scale", {"x": 1, "y": 1, "z": 1})
-
+    
                 try:
-                    # Import model file - create a geo node instead
-                    geo_node = node.createNode("geo", f"GEO_{part_type}")
-                    print(f"Created geo node: {geo_node.path()}")
-
-                    # Inside the geo node, create a file node to import the model
-                    file_node = geo_node.createNode("file", f"FILE_{part_type}")
+                    # Create a file node directly, without a geo container
+                    file_node = node.createNode("file", f"file{input_index+1}")
                     print(f"Created file node: {file_node.path()}")
-
+    
                     # Set file path
                     file_node.parm("file").set(model_path)
-
-                    # Create transform node for positioning
-                    # Use geo node's transform parameters
-                    geo_node.parmTuple("t").set(
-                        [
+    
+                    # Set transformation parameters if available on file node
+                    if "t" in [p.name() for p in file_node.parms()]:
+                        file_node.parmTuple("t").set([
                             position.get("x", 0),
                             position.get("y", 0),
-                            position.get("z", 0),
-                        ]
-                    )
-                    geo_node.parmTuple("r").set(
-                        [
+                            position.get("z", 0)
+                        ])
+                    
+                    if "r" in [p.name() for p in file_node.parms()]:
+                        file_node.parmTuple("r").set([
                             rotation.get("x", 0),
                             rotation.get("y", 0),
-                            rotation.get("z", 0),
-                        ]
-                    )
-                    geo_node.parmTuple("s").set(
-                        [scale.get("x", 1), scale.get("y", 1), scale.get("z", 1)]
-                    )
-
+                            rotation.get("z", 0)
+                        ])
+                    
+                    if "s" in [p.name() for p in file_node.parms()]:
+                        file_node.parmTuple("s").set([
+                            scale.get("x", 1),
+                            scale.get("y", 1),
+                            scale.get("z", 1)
+                        ])
+    
                     # Connect to merge node
-                    merge_node.setInput(input_index, geo_node)
+                    merge_node.setInput(input_index, file_node)
                     input_index += 1
                 except Exception as e:
-                    print(f"Error creating nodes for {part_type}: {str(e)}")
-
-            # Cook the nodes
-            weapon_node.cook(force=True)
-
-            # Signal completion
-            self.generationFinished.emit(True, "")
-
+                    print(f"Error creating file node for {part_type}: {str(e)}")
+    
+            # Create output0 node
+            output_node = node.createNode("output", "output0")
+            print(f"Created output node: {output_node.path()}")
+            
+            # Connect weapon_node to output_node
+            output_node.setInput(0, weapon_node)
+    
+            # Set display flag on the output node
+            output_node.setDisplayFlag(True)
+            output_node.setRenderFlag(True)
+    
+            # Layout the network for better visualization
+            node.layoutChildren()
+    
             # Select the output node
             weapon_node.setSelected(True)
-
+    
+            # Signal completion
+            self.generationFinished.emit(True, "")
+    
         except Exception as e:
             print(f"Error in on_weapon_assembled: {str(e)}")
             import traceback
-
             traceback.print_exc()
             self.generationFinished.emit(False, str(e))
-
 
 # -----------------------------------------------------------------------------
 # Module Interface Functions
