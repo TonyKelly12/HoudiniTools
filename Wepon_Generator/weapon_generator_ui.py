@@ -41,6 +41,12 @@ class WeaponAssemblyAPI:
             if time.time() - cache_time < self.cache_timeout:
                 return True
         return False
+    
+    def clear_cache(self):
+        """Clear the API cache to force fresh data"""
+        self.cache = {}
+        self.cache_timestamps = {}
+        print("API cache cleared")
 
     def _update_cache(self, cache_key, data):
         """Update cache with new data"""
@@ -261,6 +267,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
     generationFinished = QtCore.Signal(bool, str)
     weaponAssembled = QtCore.Signal(object, object)
     progressUpdated = QtCore.Signal(int)
+    refreshRequested = QtCore.Signal()
 
     def __init__(self, parent=None, node_path=None):
         super(WeaponGeneratorWidget, self).__init__(parent)
@@ -289,6 +296,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         self.generationFinished.connect(self.on_generation_finished)
         self.weaponAssembled.connect(self.on_weapon_assembled)
         self.progressUpdated.connect(self.update_progress)
+        self.refreshRequested.connect(self.refresh_parts)
         # Test API connection and initialize
         self.initialize()
 
@@ -364,6 +372,11 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         self.action_layout.addWidget(self.reset_button)
         self.action_layout.addStretch()
         self.action_layout.addWidget(self.create_button)
+        
+        self.refresh_button = QtWidgets.QPushButton("Refresh Parts")
+        self.refresh_button.setToolTip("Refresh available parts from the server")
+        self.refresh_button.clicked.connect(self.refresh_all_parts)
+        self.status_layout.addWidget(self.refresh_button)
 
         # Add all layouts to main layout
         main_layout.addLayout(self.status_layout)
@@ -467,6 +480,35 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         self.current_pages = {}
         self.has_more_pages = {}
 
+    def refresh_all_parts(self):
+        """Refresh all parts by clearing cache and reloading data"""
+        # Show a loading indicator
+        self.status_label.setText("Refreshing parts...")
+
+        # Clear the API cache to force fresh data
+        self.api.clear_cache()
+
+        # Emit signal to refresh the current view
+        self.refreshRequested.emit()
+
+        # Update status
+        self.status_label.setText("Parts refreshed")
+
+    def refresh_parts(self):
+        """Refresh current weapon type parts - triggered by refresh button"""
+        # Get current weapon type
+        weapon_type_index = self.type_combo.currentIndex()
+        if weapon_type_index < 0:
+            return
+
+        # Store current selections before refresh
+        old_selections = self.selected_parts.copy()
+
+        # Re-trigger the weapon type changed event to reload everything
+        self.on_weapon_type_changed(weapon_type_index)
+
+        # Try to restore previous selections after refresh
+        self.selected_parts = old_selections
     def add_part_selection(self, weapon_type, part_type):
         """Add UI elements for selecting a part type"""
         # Create a container widget for this part type
@@ -1273,6 +1315,10 @@ def show_weapon_generator(node_path=None):
     generator_widget = WeaponGeneratorWidget(dialog, node_path)
     upload_widget = WeaponPartUploadWidget(dialog, generator_widget.api)
 
+    # Connect signals for refreshing parts list after upload
+    upload_widget.uploadCompleted.connect(lambda success, msg: 
+    generator_widget.refresh_all_parts() if success else None)
+    
     # Add tabs
     tab_widget.addTab(generator_widget, "Generate Weapon")
     tab_widget.addTab(upload_widget, "Upload Parts")
@@ -1647,7 +1693,11 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
 
         if success:
             # Show success message
-            QtWidgets.QMessageBox.information(self, "Upload Complete", message)
+            QtWidgets.QMessageBox.information(
+                self, 
+                "Upload Complete", 
+                message + "\n\nThe part has been added to the database and will appear in the parts list."
+            )
 
             # Clear form for next upload
             self.clear_form()
