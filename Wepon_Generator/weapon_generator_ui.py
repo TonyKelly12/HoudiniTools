@@ -553,16 +553,24 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
 
     def set_default_preview(self, label):
         """Set a default preview image"""
-        # Create a simple icon with the part type
+        # Create a simple icon with text
         pixmap = QtGui.QPixmap(120, 120)
         pixmap.fill(QtCore.Qt.transparent)
-
+    
         painter = QtGui.QPainter(pixmap)
-        painter.setPen(QtGui.QPen(QtGui.QColor("#888888")))
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        
+        # Draw a subtle background
+        painter.setBrush(QtGui.QBrush(QtGui.QColor(70, 70, 70, 180)))
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawRoundedRect(5, 5, 110, 110, 8, 8)
+        
+        # Draw text
+        painter.setPen(QtGui.QPen(QtGui.QColor("#BBBBBB")))
         painter.setFont(QtGui.QFont("Arial", 12))
         painter.drawText(pixmap.rect(), QtCore.Qt.AlignCenter, "No\nPreview")
+        
         painter.end()
-
         label.setPixmap(pixmap)
 
     def load_parts(self, weapon_type, part_type):
@@ -620,7 +628,10 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
             self.part_models[part_type] = parts_data
 
             # If we don't already have a selection for this part type, select the first part
-            if part_type not in self.selected_parts or not self.selected_parts[part_type]:
+            if (
+                part_type not in self.selected_parts
+                or not self.selected_parts[part_type]
+            ):
                 part = parts_data[0]
                 self.selected_parts[part_type] = part.get("id")
 
@@ -645,7 +656,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                         self.update_part_preview(part_type, part)
                         found = True
                         break
-                    
+
                 # If we couldn't find the selected part in the new data, reset to the first one
                 if not found and parts_data:
                     part = parts_data[0]
@@ -659,11 +670,17 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                     self.update_part_preview(part_type, part)
 
             # Enable/disable navigation buttons
-            widgets["prev_btn"].setEnabled(self.current_pages[part_type] > 1 or len(parts_data) > 1)
-            widgets["next_btn"].setEnabled(self.has_more_pages[part_type] or len(parts_data) > 1)
+            widgets["prev_btn"].setEnabled(
+                self.current_pages[part_type] > 1 or len(parts_data) > 1
+            )
+            widgets["next_btn"].setEnabled(
+                self.has_more_pages[part_type] or len(parts_data) > 1
+            )
 
             # Update pagination status
-            self.has_more_pages[part_type] = len(parts_data) >= 10  # Assuming page size of 10
+            self.has_more_pages[part_type] = (
+                len(parts_data) >= 10
+            )  # Assuming page size of 10
         else:
             # No parts found
             widgets["info"].setText("No parts found")
@@ -691,76 +708,136 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
 
         # Try to download the icon from the API
         try:
-            icon_url = f"{self.api.base_url}/models/icons/{part_id}"
-
-            # Use QNetworkAccessManager for more reliable image loading
+            # Use QNetworkAccessManager for async image loading without freezing UI
             if not hasattr(self, 'network_manager'):
-                self.network_manager = QtNetwork.QNetworkAccessManager()
+                self.network_manager = QNetworkAccessManager()
                 self.network_manager.finished.connect(self.handle_network_response)
 
-            # Store the request context
-            request = QtNetwork.QNetworkRequest(QtCore.QUrl(icon_url))
-            request.setAttribute(QtNetwork.QNetworkRequest.User, part_type)
-            self.network_manager.get(request)
+            # Initialize request tracking dictionary if not exists
+            if not hasattr(self, 'request_data'):
+                self.request_data = {}
 
             # Show loading indicator while waiting for image
             spinner_pixmap = self.create_loading_indicator()
             preview_label.setPixmap(spinner_pixmap)
 
+            # Get the icon URL
+            icon_url = f"{self.api.base_url}/models/icons/{part_id}"
+            url = QtCore.QUrl(icon_url)
+            request = QNetworkRequest(url)
+
+            # Store request data in a dictionary using the URL as key
+            url_str = url.toString()
+            self.request_data[url_str] = {
+                'part_type': part_type,
+                'part_id': part_id
+            }
+
+            # Debug info
+            print(f"Fetching icon for {part_type} (ID: {part_id}): {icon_url}")
+
+            # Send the request
+            self.network_manager.get(request)
         except Exception as e:
-            print(f"Error initiating icon download: {str(e)}")
+            print(f"Error fetching icon: {str(e)}")
             self._create_colored_preview(placeholder, part_type, part)
             preview_label.setPixmap(placeholder)
 
     def handle_network_response(self, reply):
         """Handle the network response for image downloads"""
-        part_type = reply.request().attribute(QtNetwork.QNetworkRequest.User)
+        # Get the URL used in the request
+        url = reply.request().url().toString()
+
+        # Get the stored data from our tracking dictionary
+        request_info = getattr(self, 'request_data', {}).get(url, {})
+        part_type = request_info.get('part_type')
+        part_id = request_info.get('part_id')
+
+        # Clean up the request from our tracking dictionary
+        if url in getattr(self, 'request_data', {}):
+            del self.request_data[url]
+
+        # If we can't find the part_type, we can't proceed
+        if not part_type or part_type not in self.part_widgets:
+            print(f"Warning: Could not determine part type for reply from URL: {url}")
+            return
 
         if part_type not in self.part_widgets:
             return
 
         preview_label = self.part_widgets[part_type]["preview"]
-
-        # Get error if any
         error = reply.error()
 
-        if error == QtNetwork.QNetworkReply.NoError:
+        # Debug info
+        print(f"Received icon response for {part_type} (ID: {part_id}), error: {error}")
+
+        if error == QNetworkReply.NoError:
             try:
                 # Read the image data
                 image_data = reply.readAll()
 
-                # Create QImage first to validate and handle both PNG and JPEG
+                # Create a QImage from the data
                 image = QtGui.QImage()
                 if image.loadFromData(image_data):
-                    # Convert to pixmap if valid
+                    # If the image loaded successfully, convert to a pixmap
                     pixmap = QtGui.QPixmap.fromImage(image)
-                    # Scale to fit
+
+                    # Scale to fit the preview label while maintaining aspect ratio
                     pixmap = pixmap.scaled(
-                        120, 120, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
+                        120, 120, 
+                        QtCore.Qt.KeepAspectRatio, 
+                        QtCore.Qt.SmoothTransformation
                     )
+
+                    # Set the pixmap on the preview label
                     preview_label.setPixmap(pixmap)
+
+                    # Debug info
+                    print(f"Successfully displayed icon for {part_type} (ID: {part_id})")
                 else:
-                    # Invalid image data
                     raise Exception("Invalid image data")
-
             except Exception as e:
-                print(f"Error processing image data: {str(e)}")
-                # Fall back to colored preview if we have a part in our data
-                for part_type_key, parts in self.part_models.items():
-                    if part_type_key == part_type:
-                        for part in parts:
-                            if part.get("id") == reply.url().toString().split('/')[-1]:
-                                placeholder = QtGui.QPixmap(120, 120)
-                                placeholder.fill(QtCore.Qt.transparent)
-                                self._create_colored_preview(placeholder, part_type, part)
-                                preview_label.setPixmap(placeholder)
-                                return
+                print(f"Error processing icon: {str(e)}")
 
-                # Default fallback
-                self.set_default_preview(preview_label)
+                # Find the part in our current data
+                part = None
+                for p in self.part_models.get(part_type, []):
+                    if p.get("id") == part_id:
+                        part = p
+                        break
+                    
+                # Create a fallback preview
+                placeholder = QtGui.QPixmap(120, 120)
+                placeholder.fill(QtCore.Qt.transparent)
+                if part:
+                    self._create_colored_preview(placeholder, part_type, part)
+                else:
+                    # Default fallback if we can't find the part data
+                    self.set_default_preview(preview_label)
+                    return
+
+                preview_label.setPixmap(placeholder)
         else:
             print(f"Network error: {reply.errorString()}")
-            self.set_default_preview(preview_label)
+
+            # Find the part in our current data
+            part = None
+            for p in self.part_models.get(part_type, []):
+                if p.get("id") == part_id:
+                    part = p
+                    break
+                
+            # Create a fallback preview
+            placeholder = QtGui.QPixmap(120, 120)
+            placeholder.fill(QtCore.Qt.transparent)
+            if part:
+                self._create_colored_preview(placeholder, part_type, part)
+            else:
+                # Default fallback if we can't find the part data
+                self.set_default_preview(preview_label)
+                return
+
+            preview_label.setPixmap(placeholder)
 
     def create_loading_indicator(self):
         """Create a loading spinner indicator"""
@@ -768,35 +845,62 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         pixmap.fill(QtCore.Qt.transparent)
 
         painter = QtGui.QPainter(pixmap)
-        painter.setPen(QtGui.QPen(QtGui.QColor("#888888")))
+
+        # Set up the painter with anti-aliasing
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        # Create a light gray outline circle
+        painter.setPen(QtGui.QPen(QtGui.QColor("#888888"), 2))
         painter.setBrush(QtGui.QBrush(QtCore.Qt.NoBrush))
         painter.drawEllipse(40, 40, 40, 40)
+
+        # Create a blue arc to indicate loading
+        pen = QtGui.QPen(QtGui.QColor("#3498db"), 3)
+        painter.setPen(pen)
+        # Draw an arc from 0 to 120 degrees
+        painter.drawArc(40, 40, 40, 40, 0, 120 * 16)  # Qt uses 1/16th of a degree
+
+        # Add "Loading..." text
+        painter.setPen(QtGui.QPen(QtGui.QColor("#888888")))
         painter.setFont(QtGui.QFont("Arial", 10))
         painter.drawText(pixmap.rect(), QtCore.Qt.AlignCenter, "Loading...")
-        painter.end()
 
-        return pixmap    
+        painter.end()
+        return pixmap
 
     def _create_colored_preview(self, pixmap, part_type, part):
         """Create a colored preview with text as fallback"""
-        # Your existing preview generation code
+        # Define distinct colors for different part types
         colors = {
             "handle": "#8B4513",  # Brown
-            # ... other colors ...
+            "grip": "#A0522D",    # Sienna
+            "blade": "#C0C0C0",   # Silver
+            "guard": "#B8860B",   # DarkGoldenrod
+            "pommel": "#CD853F",  # Peru
+            "head": "#A52A2A",    # Brown
+            "shaft": "#D2B48C",   # Tan
+            "stock": "#5F9EA0",   # CadetBlue
+            "barrel": "#708090",  # SlateGray
+            "body": "#4682B4",    # SteelBlue
         }
+
+        # Get color based on part type or use default
         color = colors.get(part_type, "#888888")
         pixmap.fill(QtGui.QColor(color))
 
-        # Add the part name
+        # Create a painter to add text on the pixmap
         painter = QtGui.QPainter(pixmap)
         painter.setPen(QtGui.QPen(QtCore.Qt.white))
         painter.setFont(QtGui.QFont("Arial", 10))
 
+        # Get the part name from metadata
         name = part.get("metadata", {}).get("name", "Unknown")
+
         # Truncate long names
         if len(name) > 20:
             name = name[:17] + "..."
 
+        # Draw name centered on the pixmap
         painter.drawText(pixmap.rect(), QtCore.Qt.AlignCenter, name)
         painter.end()
 
@@ -810,7 +914,9 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
             return  # No parts to navigate through
 
         # Debug print to see what we're working with
-        print(f"Navigate {part_type}: {len(parts)} parts available, direction: {direction}")
+        print(
+            f"Navigate {part_type}: {len(parts)} parts available, direction: {direction}"
+        )
 
         # Find current selected index
         current_id = self.selected_parts.get(part_type)
@@ -831,7 +937,9 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                 # We need to load the previous page if it exists
                 if self.current_pages[part_type] > 1:
                     self.current_pages[part_type] -= 1
-                    print(f"Loading previous page for {part_type}: page {self.current_pages[part_type]}")
+                    print(
+                        f"Loading previous page for {part_type}: page {self.current_pages[part_type]}"
+                    )
                     self.load_parts(weapon_type, part_type)
                     return
                 else:
@@ -844,7 +952,9 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                 # We need to load the next page if it exists
                 if self.has_more_pages[part_type]:
                     self.current_pages[part_type] += 1
-                    print(f"Loading next page for {part_type}: page {self.current_pages[part_type]}")
+                    print(
+                        f"Loading next page for {part_type}: page {self.current_pages[part_type]}"
+                    )
                     self.load_parts(weapon_type, part_type)
                     return
                 else:
@@ -1151,8 +1261,8 @@ def show_weapon_generator(node_path=None):
 class WeaponPartUploadWidget(QtWidgets.QWidget):
     """Widget for uploading new weapon parts to the API"""
 
-    uploadCompleted = QtCore.Signal(bool, str)  
-    progressUpdated = QtCore.Signal(int)  
+    uploadCompleted = QtCore.Signal(bool, str)
+    progressUpdated = QtCore.Signal(int)
 
     def __init__(self, parent=None, api=None):
         super(WeaponPartUploadWidget, self).__init__(parent)
@@ -1397,15 +1507,21 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
         """Upload the part to the API"""
         # Validate required fields
         if not self.name_input.text().strip():
-            QtWidgets.QMessageBox.warning(self, "Missing Information", "Please enter a name for the part.")
+            QtWidgets.QMessageBox.warning(
+                self, "Missing Information", "Please enter a name for the part."
+            )
             return
 
         if not self.model_path_label.text():
-            QtWidgets.QMessageBox.warning(self, "Missing File", "Please select a model file to upload.")
+            QtWidgets.QMessageBox.warning(
+                self, "Missing File", "Please select a model file to upload."
+            )
             return
 
         if not self.icon_path_label.text():
-            QtWidgets.QMessageBox.warning(self, "Missing File", "Please select an icon/preview image.")
+            QtWidgets.QMessageBox.warning(
+                self, "Missing File", "Please select an icon/preview image."
+            )
             return
 
         # Prepare metadata
@@ -1413,7 +1529,11 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
 
         material_slots = None
         if self.material_slots_input.text().strip():
-            material_slots = [slot.strip() for slot in self.material_slots_input.text().split(",") if slot.strip()]
+            material_slots = [
+                slot.strip()
+                for slot in self.material_slots_input.text().split(",")
+                if slot.strip()
+            ]
 
         # Prepare weapon part metadata
         weapon_part_metadata = None
@@ -1422,15 +1542,19 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
                 "weapon_type": self.weapon_type_combo.currentData(),
                 "part_type": self.part_type_combo.currentData(),
                 "is_attachment": False,
-                "material_slots": material_slots
+                "material_slots": material_slots,
             }
 
             # Add variant info if provided
             if self.variant_name_input.text().strip():
-                weapon_part_metadata["variant_name"] = self.variant_name_input.text().strip()
+                weapon_part_metadata["variant_name"] = (
+                    self.variant_name_input.text().strip()
+                )
 
             if self.variant_group_input.text().strip():
-                weapon_part_metadata["variant_group"] = self.variant_group_input.text().strip()
+                weapon_part_metadata["variant_group"] = (
+                    self.variant_group_input.text().strip()
+                )
 
         # Prepare metadata JSON
         metadata = {
@@ -1438,7 +1562,7 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
             "description": self.description_input.toPlainText().strip(),
             "format": os.path.splitext(self.model_path_label.text())[1][1:].lower(),
             "category": self.category_input.text().strip() or "weapons",
-            "is_weapon_part": self.is_weapon_part.isChecked()
+            "is_weapon_part": self.is_weapon_part.isChecked(),
         }
 
         if tags:
@@ -1469,8 +1593,8 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
                 self.model_path_label.text(),
                 self.icon_path_label.text(),
                 metadata,
-                self.progress_dialog
-            )
+                self.progress_dialog,
+            ),
         )
         self.upload_thread.daemon = True
         self.upload_thread.start()
@@ -1486,7 +1610,7 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
         self.setEnabled(True)
 
         # Close progress dialog if it exists
-        if hasattr(self, 'progress_dialog') and self.progress_dialog:
+        if hasattr(self, "progress_dialog") and self.progress_dialog:
             self.progress_dialog.close()
 
         if success:
@@ -1503,110 +1627,123 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
         """Perform the upload in a background thread with better logging"""
         try:
             print("Starting upload process...")
-            
+
             # Update progress
             self.progressUpdated.emit(10)
             print("Progress: 10% - Starting file preparation")
-            
+
             # Check if files exist
             if not os.path.exists(model_path):
                 print(f"Error: Model file not found: {model_path}")
                 self.uploadCompleted.emit(False, f"Model file not found: {model_path}")
                 return
-                
+
             if not os.path.exists(icon_path):
                 print(f"Error: Icon file not found: {icon_path}")
                 self.uploadCompleted.emit(False, f"Icon file not found: {icon_path}")
                 return
-            
+
             # Remove any icon_path field from metadata to prevent errors
             if "icon_path" in metadata:
                 del metadata["icon_path"]
-                
+
             try:
                 # Try opening the files to ensure they're accessible
-                with open(model_path, 'rb') as test_model:
-                    model_size = os.path.getsize(model_path)
-                    print(f"Model file opened successfully. Size: {model_size} bytes")
-                    
-                with open(icon_path, 'rb') as test_icon:
-                    icon_size = os.path.getsize(icon_path)
-                    print(f"Icon file opened successfully. Size: {icon_size} bytes")
+                model_size = os.path.getsize(model_path)
+                print(f"Model file opened successfully. Size: {model_size} bytes")
+
+                icon_size = os.path.getsize(icon_path)
+                print(f"Icon file opened successfully. Size: {icon_size} bytes")
             except Exception as file_error:
                 print(f"File access error: {str(file_error)}")
-                self.uploadCompleted.emit(False, f"File access error: {str(file_error)}")
+                self.uploadCompleted.emit(
+                    False, f"File access error: {str(file_error)}"
+                )
                 return
-                
+
             # Update progress
             self.progressUpdated.emit(20)
             print("Progress: 20% - Files prepared, creating request")
-            
+
             import requests
             import json
-            
+
             # Convert metadata to JSON
             metadata_json = json.dumps(metadata)
             print(f"Metadata JSON prepared: {metadata_json[:100]}...")
-            
+
             # Build URL
-            if self.api and hasattr(self.api, 'base_url'):
+            if self.api and hasattr(self.api, "base_url"):
                 url = f"{self.api.base_url}/models/"
                 print(f"Target URL: {url}")
             else:
                 print("Error: API client not available or missing base_url")
                 self.uploadCompleted.emit(False, "API client not available")
                 return
-                
+
             # Update progress
             self.progressUpdated.emit(30)
             print("Progress: 30% - Request prepared, opening files for upload")
-            
+
             try:
                 # Prepare files with explicit mode and proper closure
-                model_file = open(model_path, 'rb')
-                icon_file = open(icon_path, 'rb')
-                
+                model_file = open(model_path, "rb")
+                icon_file = open(icon_path, "rb")
+
                 files = {
-                    'file': (os.path.basename(model_path), model_file, 'application/octet-stream'),
-                    'icon': (os.path.basename(icon_path), icon_file, 'image/png')
+                    "file": (
+                        os.path.basename(model_path),
+                        model_file,
+                        "application/octet-stream",
+                    ),
+                    "icon": (os.path.basename(icon_path), icon_file, "image/png"),
                 }
-                
-                data = {
-                    'metadata_json': metadata_json
-                }
-                
+
+                data = {"metadata_json": metadata_json}
+
                 # Update progress
                 self.progressUpdated.emit(40)
                 print("Progress: 40% - Files opened, sending request")
-                
+
                 # Set timeout to prevent hanging forever
                 try:
                     print("Sending POST request...")
                     response = requests.post(url, files=files, data=data, timeout=120)
                     print(f"Request completed with status code: {response.status_code}")
-                    
+
                     # Update progress
                     self.progressUpdated.emit(90)
                     print("Progress: 90% - Request completed, processing response")
-                    
+
                     if response.status_code == 200:
                         try:
                             result = response.json()
                             print(f"Response JSON: {result}")
-                            self.uploadCompleted.emit(True, f"Part ID: {result.get('id', 'unknown')}")
+                            self.uploadCompleted.emit(
+                                True, f"Part ID: {result.get('id', 'unknown')}"
+                            )
                         except Exception as json_error:
                             print(f"Error parsing response JSON: {str(json_error)}")
                             print(f"Response text: {response.text[:500]}")
-                            self.uploadCompleted.emit(False, f"Error parsing response: {str(json_error)}")
+                            self.uploadCompleted.emit(
+                                False, f"Error parsing response: {str(json_error)}"
+                            )
                     else:
-                        print(f"Error response: {response.status_code} - {response.text[:500]}")
-                        self.uploadCompleted.emit(False, f"Upload failed with status {response.status_code}: {response.text[:200]}")
+                        print(
+                            f"Error response: {response.status_code} - {response.text[:500]}"
+                        )
+                        self.uploadCompleted.emit(
+                            False,
+                            f"Upload failed with status {response.status_code}: {response.text[:200]}",
+                        )
                 except requests.exceptions.Timeout:
                     print("Request timed out after 120 seconds")
                     self.uploadCompleted.emit(False, "Request timed out (2 minutes)")
                 except requests.exceptions.ConnectionError as conn_error:
                     print(f"Connection error: {str(conn_error)}")
-                    self.uploadCompleted.emit(False, f"Connection error: {str(conn_error)}")
+                    self.uploadCompleted.emit(
+                        False, f"Connection error: {str(conn_error)}"
+                    )
                 except Exception as req_error:
                     print(f"Request error: {str(req_error)}")
                     self.uploadCompleted.emit(False, f"Request error: {str(req_error)}")
@@ -1615,13 +1752,16 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
                     model_file.close()
                     icon_file.close()
                     print("Files closed")
-                    
+
             except Exception as file_open_error:
                 print(f"Error opening files for upload: {str(file_open_error)}")
-                self.uploadCompleted.emit(False, f"Error opening files: {str(file_open_error)}")
-                
+                self.uploadCompleted.emit(
+                    False, f"Error opening files: {str(file_open_error)}"
+                )
+
         except Exception as e:
             import traceback
+
             print("Exception in upload process:")
             traceback.print_exc()
             self.uploadCompleted.emit(False, f"Upload error: {str(e)}")
@@ -1629,21 +1769,6 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
             # Ensure progress is completed in all cases
             self.progressUpdated.emit(100)
             print("Upload process completed")
-
-    def on_upload_completed(self, success, message):
-        """Handle upload completion - triggered from signal"""
-        # Re-enable UI
-        self.setEnabled(True)
-
-        if success:
-            # Show success message
-            QtWidgets.QMessageBox.information(self, "Upload Complete", message)
-
-            # Clear form for next upload
-            self.clear_form()
-        else:
-            # Show error message
-            QtWidgets.QMessageBox.warning(self, "Upload Failed", message)
 
     def clear_form(self):
         """Clear the form fields after successful upload"""
