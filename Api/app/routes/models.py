@@ -76,17 +76,19 @@ async def upload_model_route(
         # Process icon file
         icon_data = await icon.read()
         icon_filename = f"icon_{uuid.uuid4()}.png"
-        icon_path = os.path.join(STORAGE_BASE_DIR, "icons", icon_filename)
+        icon_dir = os.path.join(STORAGE_BASE_DIR, "icons")
+
+        # Create icons directory if it doesn't exist
+        os.makedirs(icon_dir, exist_ok=True)
+
+        icon_path = os.path.join(icon_dir, icon_filename)
 
         # Save icon file
         with open(icon_path, "wb") as f:
             f.write(icon_data)
 
-        # Add icon path to metadata
-        metadata.icon_path = f"/icons/{icon_filename}"
-
-        # Upload the model
-        file_id = await upload_model(file, metadata)
+        # Upload the model with icon path
+        file_id = await upload_model(file, icon_path, metadata)
 
         return {"id": file_id, "message": "Model uploaded successfully"}
     except json.JSONDecodeError:
@@ -133,6 +135,7 @@ async def list_models_route(
 async def get_model_icon_route(
     model_id: str = Path(..., description="ID of the model")
 ):
+    """Get a model's icon image by its ID"""
     # Get model metadata
     _, document = await get_model_file_by_id(model_id)
 
@@ -143,6 +146,18 @@ async def get_model_icon_route(
     ):
         # Return default icon
         default_icon_path = os.path.join(STORAGE_BASE_DIR, "icons", "default.png")
+
+        # Create default icon if it doesn't exist
+        if not os.path.exists(default_icon_path):
+            os.makedirs(os.path.dirname(default_icon_path), exist_ok=True)
+            # Create a simple default icon (1x1 transparent pixel)
+            with open(default_icon_path, "wb") as f:
+                f.write(
+                    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+                    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x00"
+                    b"\x00\x02\x00\x01\xf4\xddX\xfe\x00\x00\x00\x00IEND\xaeB`\x82"
+                )
+
         with open(default_icon_path, "rb") as f:
             file_data = f.read()
         return StreamingResponse(io.BytesIO(file_data), media_type="image/png")
@@ -151,10 +166,16 @@ async def get_model_icon_route(
     icon_path = document["metadata"]["icon_path"]
     full_path = os.path.join(STORAGE_BASE_DIR, icon_path.lstrip("/"))
 
-    with open(full_path, "rb") as f:
-        file_data = f.read()
-
-    return StreamingResponse(io.BytesIO(file_data), media_type="image/png")
+    try:
+        with open(full_path, "rb") as f:
+            file_data = f.read()
+        return StreamingResponse(io.BytesIO(file_data), media_type="image/png")
+    except FileNotFoundError:
+        # If icon file is missing, return default icon
+        default_icon_path = os.path.join(STORAGE_BASE_DIR, "icons", "default.png")
+        with open(default_icon_path, "rb") as f:
+            file_data = f.read()
+        return StreamingResponse(io.BytesIO(file_data), media_type="image/png")
 
 
 @router.get("/weapon-parts", response_model=List[ModelResponse])
