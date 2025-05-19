@@ -43,6 +43,26 @@ CONTENT_TYPES = {
 }
 
 
+def create_default_jpeg():
+    """Create a 1x1 transparent JPEG image"""
+    img = Image.new('RGB', (1, 1), (255, 255, 255))
+    img_byte_arr = io.BytesIO()
+    img.save(img_byte_arr, format='JPEG', quality=85)
+    return img_byte_arr.getvalue()
+
+
+def get_default_jpeg():
+    """Load the default JPEG image data"""
+    default_icon_path = os.path.join(STORAGE_BASE_DIR, "icons", "default.jpg")
+    if not os.path.exists(default_icon_path):
+        # Create a simple default icon (1x1 transparent pixel)
+        os.makedirs(os.path.dirname(default_icon_path), exist_ok=True)
+        with open(default_icon_path, "wb") as f:
+            f.write(create_default_jpeg())
+    with open(default_icon_path, "rb") as f:
+        return f.read()
+
+
 @router.post("/", response_model=dict)
 async def upload_model_route(
     file: UploadFile = File(...),
@@ -102,7 +122,7 @@ async def upload_model_route(
             # If there's any error processing the icon, use a default one
             print(f"Error processing icon: {str(e)}")
             # Create a default icon
-            create_default_icon(icon_path)
+            serve_default_icon(icon_path)
 
         # Upload the model with icon path
         file_id = await upload_model(file, icon_path, metadata)
@@ -118,66 +138,90 @@ async def upload_model_route(
 async def get_model_icon_route(
     model_id: str = Path(..., description="ID of the model")
 ):
-    """Get a model's icon image by its ID"""
+    """Get a model's icon image by its ID with improved format handling"""
     # Get model metadata
-    _, document = await get_model_file_by_id(model_id)
-
-    if (
-        not document
-        or "metadata" not in document
-        or "icon_path" not in document["metadata"]
-    ):
-        # Return default icon
-        default_icon_path = os.path.join(STORAGE_BASE_DIR, "icons", "default.png")
-        if not os.path.exists(default_icon_path):
-            create_default_icon(default_icon_path)
-
-        with open(default_icon_path, "rb") as f:
-            file_data = f.read()
-        return StreamingResponse(io.BytesIO(file_data), media_type="image/png")
-
-    # Get icon path from metadata
-    icon_path = document["metadata"]["icon_path"]
-    full_path = os.path.join(STORAGE_BASE_DIR, icon_path.lstrip("/"))
-
     try:
-        # Validate the PNG with PIL and convert if needed
+        _, document = await get_model_file_by_id(model_id)
+
+        if (
+            not document
+            or "metadata" not in document
+            or "icon_path" not in document["metadata"]
+        ):
+            # Return default icon
+            return serve_default_icon()
+
+        # Get icon path from metadata
+        icon_path = document["metadata"]["icon_path"]
+        full_path = os.path.join(STORAGE_BASE_DIR, icon_path.lstrip("/"))
+
+        # Check if the file exists
+        if not os.path.exists(full_path):
+            return serve_default_icon()
+
+        # Use Pillow to validate and convert the image if needed
         try:
-            img = Image.open(full_path)
-            # Use BytesIO to avoid disk I/O
-            img_byte_arr = io.BytesIO()
-            img.save(img_byte_arr, format="PNG")
-            img_byte_arr.seek(0)
-            return StreamingResponse(img_byte_arr, media_type="image/png")
+            with Image.open(full_path) as img:
+                # Convert to RGB if image is in RGBA mode with transparency
+                if img.mode == "RGBA":
+                    # Create a white background
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    # Paste the image on the background
+                    background.paste(img, mask=img.split()[3])
+                    img = background
+
+                # Determine format (send as JPEG for better compatibility)
+                img_format = "JPEG"
+                content_type = "image/jpeg"
+
+                # Use BytesIO to avoid disk I/O
+                img_byte_arr = io.BytesIO()
+                img.save(img_byte_arr, format=img_format, quality=85)
+                img_byte_arr.seek(0)
+
+                return StreamingResponse(img_byte_arr, media_type=content_type)
         except Exception as e:
             print(f"Error processing icon image: {str(e)}")
-            # If there's an error, return the default icon
-            default_icon_path = os.path.join(STORAGE_BASE_DIR, "icons", "default.png")
-            if not os.path.exists(default_icon_path):
-                create_default_icon(default_icon_path)
+            return serve_default_icon()
 
-            with open(default_icon_path, "rb") as f:
-                file_data = f.read()
-            return StreamingResponse(io.BytesIO(file_data), media_type="image/png")
-    except FileNotFoundError:
-        # If icon file is missing, return default icon
-        default_icon_path = os.path.join(STORAGE_BASE_DIR, "icons", "default.png")
-        if not os.path.exists(default_icon_path):
-            create_default_icon(default_icon_path)
-
-        with open(default_icon_path, "rb") as f:
-            file_data = f.read()
-        return StreamingResponse(io.BytesIO(file_data), media_type="image/png")
+    except Exception as e:
+        print(f"Error getting model icon: {str(e)}")
+        return serve_default_icon()
 
 
-def create_default_icon(path):
-    """Create a valid default icon image"""
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+def serve_default_icon():
+    """Create and serve a valid default icon"""
+    try:
+        # Create a simple colored image using PIL
+        img = Image.new("RGB", (120, 120), color=(73, 109, 137))
 
-    # Create a simple 100x100 colored image using PIL
-    img = Image.new("RGB", (100, 100), color=(73, 109, 137))
-    img.save(path)
+        # Draw some text on it
+        from PIL import ImageDraw, ImageFont
+
+        draw = ImageDraw.Draw(img)
+
+        # Try to use a default font
+        try:
+            font = ImageFont.truetype("arial.ttf", 14)
+        except OSError:
+            font = ImageFont.load_default()
+
+        draw.text((20, 50), "No Preview", fill=(255, 255, 255), font=font)
+
+        # Convert to bytes
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format="JPEG", quality=95)
+        img_byte_arr.seek(0)
+
+        return StreamingResponse(img_byte_arr, media_type="image/jpeg")
+    except Exception as e:
+        print(f"Error creating default icon: {str(e)}")
+
+        # Last resort - create a tiny valid JPG
+        return StreamingResponse(
+            io.BytesIO(get_default_jpeg()),
+            media_type="image/jpeg",
+        )
 
 
 # Rest of the file remains the same...
