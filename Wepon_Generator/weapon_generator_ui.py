@@ -41,7 +41,7 @@ class WeaponAssemblyAPI:
             if time.time() - cache_time < self.cache_timeout:
                 return True
         return False
-    
+
     def clear_cache(self):
         """Clear the API cache to force fresh data"""
         self.cache = {}
@@ -372,7 +372,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         self.action_layout.addWidget(self.reset_button)
         self.action_layout.addStretch()
         self.action_layout.addWidget(self.create_button)
-        
+
         self.refresh_button = QtWidgets.QPushButton("Refresh Parts")
         self.refresh_button.setToolTip("Refresh available parts from the server")
         self.refresh_button.clicked.connect(self.refresh_all_parts)
@@ -509,6 +509,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
 
         # Try to restore previous selections after refresh
         self.selected_parts = old_selections
+
     def add_part_selection(self, weapon_type, part_type):
         """Add UI elements for selecting a part type"""
         # Create a container widget for this part type
@@ -751,12 +752,12 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         # Try to download the icon from the API
         try:
             # Use QNetworkAccessManager for async image loading without freezing UI
-            if not hasattr(self, 'network_manager'):
+            if not hasattr(self, "network_manager"):
                 self.network_manager = QNetworkAccessManager()
                 self.network_manager.finished.connect(self.handle_network_response)
 
             # Initialize request tracking dictionary if not exists
-            if not hasattr(self, 'request_data'):
+            if not hasattr(self, "request_data"):
                 self.request_data = {}
 
             # Show loading indicator while waiting for image
@@ -770,10 +771,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
 
             # Store request data in a dictionary using the URL as key
             url_str = url.toString()
-            self.request_data[url_str] = {
-                'part_type': part_type,
-                'part_id': part_id
-            }
+            self.request_data[url_str] = {"part_type": part_type, "part_id": part_id}
 
             # Debug info
             print(f"Fetching icon for {part_type} (ID: {part_id}): {icon_url}")
@@ -791,12 +789,12 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         url = reply.request().url().toString()
 
         # Get the stored data from our tracking dictionary
-        request_info = getattr(self, 'request_data', {}).get(url, {})
-        part_type = request_info.get('part_type')
-        part_id = request_info.get('part_id')
+        request_info = getattr(self, "request_data", {}).get(url, {})
+        part_type = request_info.get("part_type")
+        part_id = request_info.get("part_id")
 
         # Clean up the request from our tracking dictionary
-        if url in getattr(self, 'request_data', {}):
+        if url in getattr(self, "request_data", {}):
             del self.request_data[url]
 
         # If we can't find the part_type, we can't proceed
@@ -826,16 +824,19 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
 
                     # Scale to fit the preview label while maintaining aspect ratio
                     pixmap = pixmap.scaled(
-                        120, 120, 
-                        QtCore.Qt.KeepAspectRatio, 
-                        QtCore.Qt.SmoothTransformation
+                        120,
+                        120,
+                        QtCore.Qt.KeepAspectRatio,
+                        QtCore.Qt.SmoothTransformation,
                     )
 
                     # Set the pixmap on the preview label
                     preview_label.setPixmap(pixmap)
 
                     # Debug info
-                    print(f"Successfully displayed icon for {part_type} (ID: {part_id})")
+                    print(
+                        f"Successfully displayed icon for {part_type} (ID: {part_id})"
+                    )
                 else:
                     raise Exception("Invalid image data")
             except Exception as e:
@@ -847,7 +848,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                     if p.get("id") == part_id:
                         part = p
                         break
-                    
+
                 # Create a fallback preview
                 placeholder = QtGui.QPixmap(120, 120)
                 placeholder.fill(QtCore.Qt.transparent)
@@ -868,7 +869,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                 if p.get("id") == part_id:
                     part = p
                     break
-                
+
             # Create a fallback preview
             placeholder = QtGui.QPixmap(120, 120)
             placeholder.fill(QtCore.Qt.transparent)
@@ -915,15 +916,15 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         # Define distinct colors for different part types
         colors = {
             "handle": "#8B4513",  # Brown
-            "grip": "#A0522D",    # Sienna
-            "blade": "#C0C0C0",   # Silver
-            "guard": "#B8860B",   # DarkGoldenrod
+            "grip": "#A0522D",  # Sienna
+            "blade": "#C0C0C0",  # Silver
+            "guard": "#B8860B",  # DarkGoldenrod
             "pommel": "#CD853F",  # Peru
-            "head": "#A52A2A",    # Brown
-            "shaft": "#D2B48C",   # Tan
-            "stock": "#5F9EA0",   # CadetBlue
+            "head": "#A52A2A",  # Brown
+            "shaft": "#D2B48C",  # Tan
+            "stock": "#5F9EA0",  # CadetBlue
             "barrel": "#708090",  # SlateGray
-            "body": "#4682B4",    # SteelBlue
+            "body": "#4682B4",  # SteelBlue
         }
 
         # Get color based on part type or use default
@@ -1037,21 +1038,21 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                 self, "Missing Parts", "Please select parts for your weapon first."
             )
             return
-    
+
         # Get weapon type
         weapon_type_index = self.type_combo.currentIndex()
         if weapon_type_index < 0:
             return
-    
+
         weapon_type = self.type_combo.itemData(weapon_type_index)
-    
+
         # Create assembly data
         assembly_parts = []
         for part_type, part_id in self.selected_parts.items():
             # Basic positioning - in a real implementation, this would be more sophisticated
             # with proper offsets based on weapon type and part types
             position = {"x": 0, "y": 0, "z": 0}
-    
+
             # Simple vertical stacking for now
             if part_type == "blade":
                 position["y"] = 1.0
@@ -1061,7 +1062,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                 position["y"] = -0.5
             elif part_type == "head":
                 position["y"] = 1.0
-    
+
             assembly_parts.append(
                 {
                     "model_id": part_id,
@@ -1071,7 +1072,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                     "scale": {"x": 1, "y": 1, "z": 1},
                 }
             )
-    
+
         assembly_data = {
             "name": f"Generated {weapon_type.capitalize()}",
             "description": "Generated using Weapon Generator HDA",
@@ -1081,11 +1082,11 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
             "updated_at": None,  # Will be set by API
             "tags": ["hda_generated"],
         }
-    
+
         # Disable UI during process
         self.setEnabled(False)
         self.status_label.setText("Generating weapon...")
-    
+
         # Show progress dialog
         self.progress = QtWidgets.QProgressDialog(
             "Generating weapon...", "Cancel", 0, 100, self
@@ -1093,19 +1094,16 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         self.progress.setWindowModality(QtCore.Qt.WindowModal)
         self.progress.setMinimumDuration(0)
         self.progress.setValue(10)
-        
+
         # Store a reference to the progress dialog
         self.progress_dialog = self.progress
-    
+
         # Download and assemble parts in a separate thread
         threading.Thread(target=self._create_weapon, args=(assembly_data,)).start()
 
     def _create_weapon(self, assembly_data):
         """Create a weapon in a background thread"""
         try:
-            # We'd use API to create the assembly but for now we'll download the models
-            # assembly_result = self.api.create_assembly(assembly_data)
-
             # Update progress to 20%
             self.progressUpdated.emit(20)
 
@@ -1133,14 +1131,19 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                 progress_value = 20 + int(60 * (i / total_parts))
                 self.progressUpdated.emit(progress_value)
 
-            # Process is complete, update progress
+            # Progress is complete, update progress
             self.progressUpdated.emit(90)
 
             # Signal to assemble parts in the main thread
             self.weaponAssembled.emit(model_files, assembly_data)
 
+            self.progressUpdated.emit(100)
+            self.generationFinished.emit(True, "Weapon created successfully!")
         except Exception as e:
-            print(f"Error creating weapon: {str(e)}")
+            print(f"Error in on_weapon_assembled: {str(e)}")
+            import traceback
+
+            traceback.print_exc()
             self.generationFinished.emit(False, str(e))
 
     def on_generation_finished(self, success, message=""):
@@ -1167,9 +1170,6 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
     def on_weapon_assembled(self, model_files, assembly_data):
         """Assemble downloaded weapon parts in Houdini - triggered from signal"""
         try:
-            # Update progress to 50%
-            self.progressUpdated.emit(50)
-
             # Get the node
             node = None
             if self.node_path:
@@ -1179,120 +1179,160 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
                 # Try to get parent node in /obj context
                 node = hou.node("/obj")
 
-            # Print node path and type for debugging
-            print(f"Parent node: {node.path()}, Type: {node.type().name()}")
-
-            # Update progress to 60%
+            # Print node path for debugging
+            print(f"Parent node: {node.path()}")
             self.progressUpdated.emit(60)
 
-            # Create a merge node to combine parts
-            merge_node = node.createNode("merge", "merge1")
-            print(f"Created merge node: {merge_node.path()}")
+            # Clear existing nodes first
+            for child in node.children():
+                if (
+                    child.name().startswith("file")
+                    or child.name().startswith("python")
+                    or child.name() == "weapon_output"
+                    or child.name() == "output0"
+                ):
+                    try:
+                        child.destroy()
+                    except hou.OperationFailed:
+                        pass
 
-            # Create a new null node for the output
-            weapon_node = node.createNode("null", "Weapon_output")
-            print(f"Created weapon node: {weapon_node.path()}")
+            # Create file nodes for each part
+            file_nodes = []
+            for i, (part_type, model_path) in enumerate(model_files.items()):
+                file_node = node.createNode("file", f"file{i+1}")
+                file_node.parm("file").set(model_path)
+                file_node.setPosition([i * 3 - (len(model_files) * 1.5), 0])
+                file_node.setComment(part_type)
+                file_nodes.append(file_node)
 
-            # Connect merge to weapon output
-            weapon_node.setInput(0, merge_node)
+            # Determine how many Python SOP nodes needed (max 4 inputs each)
+            total_parts = len(file_nodes)
 
-            # Update progress to 70%
-            self.progressUpdated.emit(70)
+            # Handle special cases for 2-5 parts first
+            if total_parts <= 2:
+                # If only 1 or 2 parts, use a single Python node
+                distribution = [total_parts]
+            elif total_parts == 3:
+                # If 3 parts, use one Python node
+                distribution = [3]
+            elif total_parts == 4:
+                # If 4 parts, use one Python node
+                distribution = [4]
+            elif total_parts == 5:
+                # If 5 parts, use two Python nodes: 3 parts, 2 parts
+                distribution = [3, 2]
+            else:
+                # For 6+ parts, distribute as evenly as possible while maintaining
+                # minimum 2 inputs per node
+                distribution = []
+                remaining = total_parts
+                max_inputs = 4  # Maximum inputs per Python node
 
-            # Add each part
-            input_index = 0
-            total_parts = len(model_files)
-            part_count = 0
+                while remaining > 0:
+                    if remaining <= max_inputs:
+                        # Last node gets all remaining parts
+                        distribution.append(remaining)
+                        remaining = 0
+                    elif remaining <= 2 * max_inputs:
+                        # If we have between max_inputs+1 and 2*max_inputs parts remaining,
+                        # distribute them evenly across 2 nodes
+                        parts_per_node = (remaining + 1) // 2  # Ceiling division
+                        distribution.append(parts_per_node)
+                        remaining -= parts_per_node
+                    else:
+                        # Otherwise, use max_inputs for this node
+                        distribution.append(max_inputs)
+                        remaining -= max_inputs
 
-            for part_type, model_path in model_files.items():
-                # Find part data in assembly
-                part_data = None
-                for part in assembly_data.get("parts", []):
-                    if part.get("part_type") == part_type:
-                        part_data = part
-                        break
+            print(f"Part distribution across Python nodes: {distribution}")
 
-                if not part_data:
-                    continue
+            # Create the Python script - using dedent to remove ALL indentation
+            # The key is to use a raw string with no indentation at all
+            python_code = """import hou
+import os
+import sys
+    
+# Add scripts path
+scripts_dir = os.path.join(hou.expandString("$HOME"), "scripts", "python")
+if scripts_dir not in sys.path:
+    sys.path.append(scripts_dir)
 
-                # Get position, rotation, scale
-                position = part_data.get("position", {"x": 0, "y": 0, "z": 0})
-                rotation = part_data.get("rotation", {"x": 0, "y": 0, "z": 0})
-                scale = part_data.get("scale", {"x": 1, "y": 1, "z": 1})
+# Import simple_object_aligner module
+try:
+    import simple_object_aligner
+except ImportError:
+    print("ERROR: simple_object_aligner.py not found!")
+    print(f"Make sure it exists in: {scripts_dir}")
+    
+    # Fall back to basic merge
+    node = hou.pwd()
+    geo = node.geometry()
+    for i in range(len(node.inputs())):
+        input_node = node.input(i)
+        if input_node and input_node.geometry():
+            geo.merge(input_node.geometry())
+    """
 
-                try:
-                    # Create a file node directly, without a geo container
-                    file_node = node.createNode("file", f"file{input_index+1}")
-                    print(f"Created file node: {file_node.path()}")
+            # Create Python nodes
+            python_nodes = []
+            start_idx = 0
+            for i, count in enumerate(distribution):
+                python_node = node.createNode("python", f"python{i+1}")
+                python_node.setPosition([(i * 6) - (len(distribution) * 3), -3])
+                python_node.parm("python").set(python_code)
 
-                    # Set file path
-                    file_node.parm("file").set(model_path)
+                # Connect file nodes according to distribution
+                for j in range(count):
+                    if start_idx + j < len(file_nodes):
+                        python_node.setInput(j, file_nodes[start_idx + j])
 
-                    # Set transformation parameters if available on file node
-                    if "t" in [p.name() for p in file_node.parms()]:
-                        file_node.parmTuple("t").set([
-                            position.get("x", 0),
-                            position.get("y", 0),
-                            position.get("z", 0)
-                        ])
+                start_idx += count
+                python_nodes.append(python_node)
 
-                    if "r" in [p.name() for p in file_node.parms()]:
-                        file_node.parmTuple("r").set([
-                            rotation.get("x", 0),
-                            rotation.get("y", 0),
-                            rotation.get("z", 0)
-                        ])
+            # Create final Python node if needed (more than one Python node)
+            if len(python_nodes) > 1:
+                final_python = node.createNode("python", "python_final")
+                final_python.setPosition([0, -6])
+                final_python.parm("python").set(python_code)
 
-                    if "s" in [p.name() for p in file_node.parms()]:
-                        file_node.parmTuple("s").set([
-                            scale.get("x", 1),
-                            scale.get("y", 1),
-                            scale.get("z", 1)
-                        ])
+                # Connect all python nodes
+                for i, py_node in enumerate(python_nodes):
+                    final_python.setInput(i, py_node)
 
-                    # Connect to merge node
-                    merge_node.setInput(input_index, file_node)
-                    input_index += 1
+                output_source = final_python
+            else:
+                output_source = python_nodes[0]
 
-                    # Update progress for each part (spread from 70 to 90%)
-                    part_count += 1
-                    progress = 70 + int((part_count / total_parts) * 20)
-                    self.progressUpdated.emit(progress)
+            # Create output chain
+            weapon_out = node.createNode("null", "weapon_output")
+            weapon_out.setPosition([0, -9])
+            weapon_out.setInput(0, output_source)
 
-                except Exception as e:
-                    print(f"Error creating file node for {part_type}: {str(e)}")
+            output = node.createNode("output", "output0")
+            output.setPosition([0, -12])
+            output.setInput(0, weapon_out)
 
-            # Update progress to 90%
-            self.progressUpdated.emit(90)
+            # Set display flags
+            output.setDisplayFlag(True)
+            output.setRenderFlag(True)
 
-            # Create output0 node
-            output_node = node.createNode("output", "output0")
-            print(f"Created output node: {output_node.path()}")
-
-            # Connect weapon_node to output_node
-            output_node.setInput(0, weapon_node)
-
-            # Set display flag on the output node
-            output_node.setDisplayFlag(True)
-            output_node.setRenderFlag(True)
-
-            # Layout the network for better visualization
+            # Layout network
             node.layoutChildren()
 
-            # Select the output node
-            weapon_node.setSelected(True)
+            # Select output node
+            weapon_out.setSelected(True)
 
-            # Update progress to 100% - complete
             self.progressUpdated.emit(100)
-
-            # Signal completion
-            self.generationFinished.emit(True, "Weapon nodes created successfully!")
+            self.generationFinished.emit(True, "Weapon created successfully!")
 
         except Exception as e:
             print(f"Error in on_weapon_assembled: {str(e)}")
             import traceback
+
             traceback.print_exc()
             self.generationFinished.emit(False, str(e))
+
+
 # -----------------------------------------------------------------------------
 # Module Interface Functions
 # -----------------------------------------------------------------------------
@@ -1316,9 +1356,10 @@ def show_weapon_generator(node_path=None):
     upload_widget = WeaponPartUploadWidget(dialog, generator_widget.api)
 
     # Connect signals for refreshing parts list after upload
-    upload_widget.uploadCompleted.connect(lambda success, msg: 
-    generator_widget.refresh_all_parts() if success else None)
-    
+    upload_widget.uploadCompleted.connect(
+        lambda success, msg: generator_widget.refresh_all_parts() if success else None
+    )
+
     # Add tabs
     tab_widget.addTab(generator_widget, "Generate Weapon")
     tab_widget.addTab(upload_widget, "Upload Parts")
@@ -1694,9 +1735,10 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
         if success:
             # Show success message
             QtWidgets.QMessageBox.information(
-                self, 
-                "Upload Complete", 
-                message + "\n\nThe part has been added to the database and will appear in the parts list."
+                self,
+                "Upload Complete",
+                message
+                + "\n\nThe part has been added to the database and will appear in the parts list.",
             )
 
             # Clear form for next upload
