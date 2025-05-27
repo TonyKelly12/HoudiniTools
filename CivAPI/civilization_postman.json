@@ -1,0 +1,556 @@
+{
+	"info": {
+		"_postman_id": "civilization-database-api",
+		"name": "Civilization Database API",
+		"description": "Comprehensive API for managing civilization data with detailed attributes covering all aspects of societal development",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Civilizations",
+			"item": [
+				{
+					"name": "Create Civilization",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Kingdom of Aethermoor\",\n  \"description\": \"A medieval kingdom known for its fertile plains and skilled craftsmen\",\n  \"tags\": [\"medieval\", \"agricultural\", \"monarchy\"],\n  \"created_by\": \"test_user\",\n  \"settlement_pattern\": \"settled\",\n  \"primary_terrain\": \"plains\",\n  \"population_density\": \"medium\",\n  \"architecture_style\": \"stone\",\n  \"government_type\": \"monarchy\",\n  \"leadership_selection\": \"hereditary\",\n  \"centralization_level\": \"highly_centralized\",\n  \"legal_system\": \"common_law\",\n  \"primary_economy\": \"agricultural\",\n  \"trade_orientation\": \"regional_trade\",\n  \"currency_type\": \"metal_coins\",\n  \"property_rights\": \"private\",\n  \"social_stratification\": \"class_based\",\n  \"gender_roles\": \"patriarchal\",\n  \"family_structure\": \"extended\",\n  \"age_hierarchy\": \"elder_led\",\n  \"primary_religion\": \"monotheistic\",\n  \"religious_influence\": \"strong_influence\",\n  \"art_focus\": \"architecture\",\n  \"cultural_values\": \"honor_based\",\n  \"education_system\": \"apprenticeship\",\n  \"literacy_rate\": \"low\",\n  \"knowledge_basis\": \"traditional_cultural\",\n  \"technology_level\": \"iron_age\",\n  \"military_structure\": \"professional_army\",\n  \"warfare_approach\": \"defensive_only\",\n  \"primary_weapons\": \"melee\",\n  \"language_complexity\": \"moderate\",\n  \"writing_system\": \"alphabetic\",\n  \"communication_methods\": \"written\",\n  \"resource_use\": \"sustainable\",\n  \"agriculture_type\": \"intensive\",\n  \"energy_sources\": \"human_animal\",\n  \"population_size\": \"medium\",\n  \"life_expectancy\": \"short\",\n  \"technological_adoption\": \"conservative\",\n  \"external_relations\": \"cautious\",\n  \"change_rate\": \"slow_changing\",\n  \"exact_population\": 150000,\n  \"exact_life_expectancy\": 45.5,\n  \"territory_size_km2\": 25000.0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/civilizations/",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ""]
+						},
+						"description": "Create a new civilization with comprehensive attributes"
+					}
+				},
+				{
+					"name": "Create Space-Age Civilization",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Stellar Confederation\",\n  \"description\": \"An advanced space-faring civilization spanning multiple star systems\",\n  \"tags\": [\"space-age\", \"democratic\", \"post-scarcity\"],\n  \"created_by\": \"test_user\",\n  \"settlement_pattern\": \"urban\",\n  \"primary_terrain\": \"mixed\",\n  \"population_density\": \"high\",\n  \"architecture_style\": \"metal\",\n  \"government_type\": \"democracy\",\n  \"leadership_selection\": \"elected\",\n  \"centralization_level\": \"federal\",\n  \"legal_system\": \"civil_law\",\n  \"primary_economy\": \"service\",\n  \"trade_orientation\": \"international_trade\",\n  \"currency_type\": \"digital\",\n  \"property_rights\": \"mixed\",\n  \"social_stratification\": \"meritocratic\",\n  \"gender_roles\": \"egalitarian\",\n  \"family_structure\": \"nuclear\",\n  \"age_hierarchy\": \"age_egalitarian\",\n  \"primary_religion\": \"atheistic\",\n  \"religious_influence\": \"secular\",\n  \"art_focus\": \"mixed\",\n  \"cultural_values\": \"achievement_oriented\",\n  \"education_system\": \"formal_schools\",\n  \"literacy_rate\": \"universal\",\n  \"knowledge_basis\": \"empirical_scientific\",\n  \"technology_level\": \"post_scarcity\",\n  \"military_structure\": \"professional_army\",\n  \"warfare_approach\": \"diplomatic\",\n  \"primary_weapons\": \"advanced_technology\",\n  \"language_complexity\": \"complex\",\n  \"writing_system\": \"alphabetic\",\n  \"communication_methods\": \"digital\",\n  \"resource_use\": \"sustainable\",\n  \"agriculture_type\": \"industrial\",\n  \"energy_sources\": \"renewable\",\n  \"population_size\": \"massive\",\n  \"life_expectancy\": \"very_long\",\n  \"technological_adoption\": \"technophilic\",\n  \"external_relations\": \"cosmopolitan\",\n  \"change_rate\": \"rapid_change\",\n  \"exact_population\": 2500000000,\n  \"exact_life_expectancy\": 150.0,\n  \"territory_size_km2\": 1000000000.0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/civilizations/",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ""]
+						},
+						"description": "Create an advanced space-age civilization"
+					}
+				},
+				{
+					"name": "List All Civilizations",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/?skip=0&limit=100",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ""],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								},
+								{
+									"key": "government_type",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "technology_level",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "population_size",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "tag",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "List all civilizations with optional filtering"
+					}
+				},
+				{
+					"name": "Filter by Government Type",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/?government_type=democracy",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ""],
+							"query": [
+								{
+									"key": "government_type",
+									"value": "democracy"
+								}
+							]
+						},
+						"description": "Filter civilizations by government type"
+					}
+				},
+				{
+					"name": "Filter by Technology Level",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/?technology_level=post_scarcity",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ""],
+							"query": [
+								{
+									"key": "technology_level",
+									"value": "post_scarcity"
+								}
+							]
+						},
+						"description": "Filter civilizations by technology level"
+					}
+				},
+				{
+					"name": "Get Civilization by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/:civilization_id",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ":civilization_id"],
+							"variable": [
+								{
+									"key": "civilization_id",
+									"value": "",
+									"description": "ID of the civilization to retrieve"
+								}
+							]
+						},
+						"description": "Get a specific civilization by its ID"
+					}
+				},
+				{
+					"name": "Update Civilization",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"metadata\": {\n    \"description\": \"Updated description for the civilization\",\n    \"exact_population\": 175000,\n    \"technology_level\": \"pre_industrial\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/civilizations/:civilization_id",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ":civilization_id"],
+							"variable": [
+								{
+									"key": "civilization_id",
+									"value": "",
+									"description": "ID of the civilization to update"
+								}
+							]
+						},
+						"description": "Update a civilization's attributes"
+					}
+				},
+				{
+					"name": "Delete Civilization",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/:civilization_id",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ":civilization_id"],
+							"variable": [
+								{
+									"key": "civilization_id",
+									"value": "",
+									"description": "ID of the civilization to delete"
+								}
+							]
+						},
+						"description": "Delete a civilization by its ID"
+					}
+				}
+			],
+			"description": "Basic CRUD operations for civilizations"
+		},
+		{
+			"name": "Search & Analytics",
+			"item": [
+				{
+					"name": "Search Civilizations",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/search?q=medieval kingdom&skip=0&limit=100",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", "search"],
+							"query": [
+								{
+									"key": "q",
+									"value": "medieval kingdom",
+									"description": "Search query"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								}
+							]
+						},
+						"description": "Full-text search across civilization names, descriptions, and tags"
+					}
+				},
+				{
+					"name": "Get by Attribute",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/by-attribute/government_type?attribute_value=monarchy",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", "by-attribute", "government_type"],
+							"query": [
+								{
+									"key": "attribute_value",
+									"value": "monarchy",
+									"description": "Attribute value to match"
+								}
+							]
+						},
+						"description": "Get civilizations with a specific attribute value"
+					}
+				},
+				{
+					"name": "Get Statistics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/statistics",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", "statistics"]
+						},
+						"description": "Get database statistics and summaries"
+					}
+				},
+				{
+					"name": "Get Attribute Distribution",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/attribute-distribution/government_type",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", "attribute-distribution", "government_type"]
+						},
+						"description": "Get distribution of values for a specific attribute"
+					}
+				},
+				{
+					"name": "Find Similar Civilizations",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/:civilization_id/similar?threshold=0.5",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ":civilization_id", "similar"],
+							"query": [
+								{
+									"key": "threshold",
+									"value": "0.5",
+									"description": "Similarity threshold (0.0 to 1.0)"
+								}
+							],
+							"variable": [
+								{
+									"key": "civilization_id",
+									"value": "",
+									"description": "ID of the reference civilization"
+								}
+							]
+						},
+						"description": "Find civilizations similar to the specified one"
+					}
+				}
+			],
+			"description": "Search, analytics, and discovery operations"
+		},
+		{
+			"name": "Relationships",
+			"item": [
+				{
+					"name": "Create Relationship",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"other_civilization_id\": \"civilization_b_id_here\",\n  \"relationship_type\": \"ally\",\n  \"relationship_strength\": 0.8,\n  \"description\": \"Strong military alliance formed after the Great War\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/civilizations/:civilization_id/relationships",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ":civilization_id", "relationships"],
+							"variable": [
+								{
+									"key": "civilization_id",
+									"value": "",
+									"description": "ID of the first civilization"
+								}
+							]
+						},
+						"description": "Create a relationship between two civilizations"
+					}
+				},
+				{
+					"name": "Get Civilization Relationships",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/:civilization_id/relationships",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ":civilization_id", "relationships"],
+							"variable": [
+								{
+									"key": "civilization_id",
+									"value": "",
+									"description": "ID of the civilization"
+								}
+							]
+						},
+						"description": "Get all relationships for a specific civilization"
+					}
+				}
+			],
+			"description": "Manage relationships between civilizations"
+		},
+		{
+			"name": "History",
+			"item": [
+				{
+					"name": "Add History Event",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"event_type\": \"war\",\n  \"title\": \"The Great Northern War\",\n  \"description\": \"A devastating conflict that lasted for seven years and reshaped the political landscape\",\n  \"year\": 1247,\n  \"era\": \"Medieval Period\",\n  \"impact_level\": \"major\",\n  \"affected_attributes\": [\"military_structure\", \"population_size\", \"external_relations\"]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/civilizations/:civilization_id/history",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ":civilization_id", "history"],
+							"variable": [
+								{
+									"key": "civilization_id",
+									"value": "",
+									"description": "ID of the civilization"
+								}
+							]
+						},
+						"description": "Add a historical event to a civilization"
+					}
+				},
+				{
+					"name": "Get Civilization History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/:civilization_id/history?skip=0&limit=100",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", ":civilization_id", "history"],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								}
+							],
+							"variable": [
+								{
+									"key": "civilization_id",
+									"value": "",
+									"description": "ID of the civilization"
+								}
+							]
+						},
+						"description": "Get historical events for a civilization"
+					}
+				}
+			],
+			"description": "Manage historical events and timelines"
+		},
+		{
+			"name": "Templates",
+			"item": [
+				{
+					"name": "Create Template",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Basic Medieval Kingdom\",\n  \"description\": \"Template for creating standard medieval kingdoms\",\n  \"metadata\": {\n    \"name\": \"Template Kingdom\",\n    \"description\": \"A template for medieval kingdoms\",\n    \"tags\": [\"medieval\", \"template\"],\n    \"settlement_pattern\": \"settled\",\n    \"primary_terrain\": \"plains\",\n    \"government_type\": \"monarchy\",\n    \"primary_economy\": \"agricultural\",\n    \"technology_level\": \"iron_age\",\n    \"population_size\": \"medium\",\n    \"life_expectancy\": \"short\",\n    \"social_stratification\": \"class_based\",\n    \"education_system\": \"apprenticeship\",\n    \"literacy_rate\": \"low\",\n    \"military_structure\": \"professional_army\",\n    \"primary_religion\": \"monotheistic\",\n    \"architecture_style\": \"stone\",\n    \"currency_type\": \"metal_coins\",\n    \"writing_system\": \"alphabetic\",\n    \"energy_sources\": \"human_animal\",\n    \"agriculture_type\": \"intensive\",\n    \"external_relations\": \"cautious\",\n    \"change_rate\": \"slow_changing\",\n    \"leadership_selection\": \"hereditary\",\n    \"centralization_level\": \"highly_centralized\",\n    \"legal_system\": \"common_law\",\n    \"trade_orientation\": \"regional_trade\",\n    \"property_rights\": \"private\",\n    \"gender_roles\": \"patriarchal\",\n    \"family_structure\": \"extended\",\n    \"age_hierarchy\": \"elder_led\",\n    \"religious_influence\": \"strong_influence\",\n    \"art_focus\": \"architecture\",\n    \"cultural_values\": \"honor_based\",\n    \"knowledge_basis\": \"traditional_cultural\",\n    \"warfare_approach\": \"defensive_only\",\n    \"primary_weapons\": \"melee\",\n    \"language_complexity\": \"moderate\",\n    \"communication_methods\": \"written\",\n    \"resource_use\": \"sustainable\",\n    \"population_density\": \"medium\",\n    \"technological_adoption\": \"conservative\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/civilizations/templates",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", "templates"]
+						},
+						"description": "Create a civilization template"
+					}
+				},
+				{
+					"name": "List Templates",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/civilizations/templates?skip=0&limit=100",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", "templates"],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								}
+							]
+						},
+						"description": "List all civilization templates"
+					}
+				},
+				{
+					"name": "Create from Template",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"overrides\": {\n    \"name\": \"Kingdom of Valeria\",\n    \"description\": \"A prosperous kingdom known for its vineyards\",\n    \"exact_population\": 200000,\n    \"territory_size_km2\": 30000\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/civilizations/templates/:template_id/create",
+							"host": ["{{base_url}}"],
+							"path": ["civilizations", "templates", ":template_id", "create"],
+							"variable": [
+								{
+									"key": "template_id",
+									"value": "",
+									"description": "ID of the template to use"
+								}
+							]
+						},
+						"description": "Create a new civilization from a template with optional overrides"
+					}
+				}
+			],
+			"description": "Manage civilization templates and presets"
+		},
+		{
+			"name": "Health & Info",
+			"item": [
+				{
+					"name": "API Root",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": ["{{base_url}}"],
+							"path": [""]
+						},
+						"description": "Get API information and features"
+					}
+				},
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": ["{{base_url}}"],
+							"path": ["health"]
+						},
+						"description": "Check API health status"
+					}
+				}
+			],
+			"description": "API information and health monitoring"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		}
+	]
+}

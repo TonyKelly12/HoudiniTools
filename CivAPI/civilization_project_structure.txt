@@ -1,0 +1,363 @@
+# Project Structure Guide
+
+## Directory Structure
+
+```
+civilization-database-api/
+├── app/                           # Main application package
+│   ├── __init__.py               # Package initialization with version info
+│   ├── main.py                   # FastAPI application entry point
+│   ├── config.py                 # Configuration settings and environment variables
+│   ├── database.py               # MongoDB operations and connection handling
+│   │
+│   ├── models/                   # Data models and schemas
+│   │   ├── __init__.py          # Model exports and imports
+│   │   └── civilization_schema.py  # Pydantic models and enums
+│   │
+│   ├── routes/                   # API endpoint definitions
+│   │   ├── __init__.py          # Router exports
+│   │   └── civilizations.py     # Civilization API endpoints
+│   │
+│   └── services/                 # Business logic layer
+│       ├── __init__.py          # Service exports
+│       └── civilization_service.py  # Core business logic
+│
+├── tests/                        # Test files (structure TBD)
+│   ├── __init__.py
+│   ├── test_civilizations.py
+│   ├── test_database.py
+│   └── conftest.py
+│
+├── docs/                         # Additional documentation
+│   ├── api-guide.md
+│   ├── deployment.md
+│   └── examples/
+│
+├── scripts/                      # Utility scripts
+│   ├── init_db.py               # Database initialization
+│   ├── migrate.py               # Migration scripts
+│   └── seed_data.py             # Sample data seeding
+│
+├── .env.example                  # Environment variable template
+├── .env                         # Environment variables (not in git)
+├── .gitignore                   # Git ignore rules
+├── docker-compose.yml           # Docker services configuration
+├── Dockerfile                   # Container definition
+├── requirements.txt             # Python dependencies
+├── run.py                       # Application launcher
+├── test_examples.py             # Example usage and testing
+├── postman_collection.json      # API testing collection
+├── README.md                    # Main project documentation
+└── LICENSE                      # License file
+```
+
+## Key Components
+
+### `/app` - Main Application
+
+#### `main.py`
+- FastAPI application initialization
+- Middleware configuration (CORS, etc.)
+- Router registration
+- Exception handling
+- Custom OpenAPI schema
+
+#### `config.py`
+- Environment variable loading
+- Configuration settings with defaults
+- Feature flags and limits
+- Database connection settings
+
+#### `database.py`
+- MongoDB async client setup
+- Collection definitions
+- Database operations (CRUD, search, aggregation)
+- Connection management
+
+### `/app/models` - Data Models
+
+#### `civilization_schema.py`
+- **Pydantic Models**: Data validation and serialization
+- **Enums**: All civilization attribute choices
+- **Response Models**: API response structures
+- **Comprehensive Attributes**: 30+ categorized civilization properties
+
+**Key Models:**
+- `CivilizationMetadata` - Core civilization data
+- `CivilizationResponse` - API response format
+- `CivilizationList` - Paginated list response
+- `CivilizationRelationship` - Inter-civilization relationships
+- `CivilizationHistoryEvent` - Historical events
+
+### `/app/routes` - API Endpoints
+
+#### `civilizations.py`
+- **CRUD Operations**: Create, Read, Update, Delete
+- **Search & Filter**: Full-text search, attribute filtering
+- **Analytics**: Statistics, distributions, similarity
+- **Relationships**: Inter-civilization connections
+- **History**: Event tracking and timelines
+- **Templates**: Reusable civilization presets
+
+### `/app/services` - Business Logic
+
+#### `civilization_service.py`
+- **Validation Logic**: Input validation and processing
+- **Business Rules**: Complex operations and calculations
+- **Data Transformation**: Between API and database formats
+- **Error Handling**: Consistent error responses
+
+## Data Flow
+
+```
+HTTP Request → Router → Service → Database → Service → Router → HTTP Response
+     ↓            ↓         ↓         ↓         ↓         ↓         ↓
+   JSON      Validation  Logic   MongoDB   Results  Transform  JSON
+```
+
+### 1. Request Processing
+- FastAPI receives HTTP request
+- Router validates path and query parameters
+- Request body validated against Pydantic models
+
+### 2. Business Logic
+- Service layer applies business rules
+- Data transformation and validation
+- Complex operations (similarity, analytics)
+
+### 3. Database Operations
+- Async MongoDB operations via Motor
+- Aggregation pipelines for analytics
+- Indexing for performance
+
+### 4. Response Formation
+- Results transformed to response models
+- Pagination metadata added
+- JSON serialization via Pydantic
+
+## Database Schema
+
+### Collections
+
+#### `civilizations`
+```javascript
+{
+  _id: ObjectId,
+  metadata: {
+    // All civilization attributes
+    name: String,
+    description: String,
+    tags: [String],
+    // ... 30+ categorized attributes
+  },
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+#### `relationships`
+```javascript
+{
+  _id: ObjectId,
+  civilization_a_id: String,
+  civilization_b_id: String,
+  relationship_type: String,
+  relationship_strength: Number,
+  description: String,
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+#### `history`
+```javascript
+{
+  _id: ObjectId,
+  civilization_id: String,
+  event_type: String,
+  title: String,
+  description: String,
+  year: Number,
+  era: String,
+  impact_level: String,
+  affected_attributes: [String],
+  created_at: Date
+}
+```
+
+#### `templates`
+```javascript
+{
+  _id: ObjectId,
+  name: String,
+  description: String,
+  metadata: {
+    // Template civilization attributes
+  },
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+## Configuration Management
+
+### Environment Variables
+- **Development**: `.env` file with debug settings
+- **Production**: Environment-specific variables
+- **Docker**: `docker-compose.yml` environment section
+
+### Feature Flags
+- Analytics enabled/disabled
+- Rate limiting configuration
+- Cache settings
+- Backup scheduling
+
+## Deployment Architecture
+
+### Development
+```
+Developer → FastAPI (localhost:8000) → MongoDB (localhost:27017)
+```
+
+### Docker Development
+```
+Docker Compose:
+├── app (FastAPI)
+├── mongodb (Database)
+├── mongo-express (Admin UI)
+└── redis (Optional caching)
+```
+
+### Production
+```
+Load Balancer → [FastAPI Instances] → MongoDB Cluster
+                        ↓
+                   Redis Cache
+                        ↓
+                   Monitoring
+```
+
+## API Design Patterns
+
+### RESTful Endpoints
+- Resource-based URLs (`/civilizations/`)
+- HTTP methods for operations (GET, POST, PUT, DELETE)
+- Consistent response formats
+
+### Pagination
+- Skip/limit based pagination
+- Total count included in responses
+- Page metadata for navigation
+
+### Filtering & Search
+- Query parameter filtering
+- Full-text search capabilities
+- Attribute-specific filtering
+
+### Error Handling
+- Consistent error response format
+- HTTP status codes
+- Detailed error messages
+
+### Validation
+- Pydantic model validation
+- Enum constraints
+- Custom validation rules
+
+## Performance Considerations
+
+### Database Indexing
+```javascript
+// Recommended indexes
+db.civilizations.createIndex({"metadata.name": "text", "metadata.description": "text", "metadata.tags": "text"})
+db.civilizations.createIndex({"metadata.government_type": 1})
+db.civilizations.createIndex({"metadata.technology_level": 1})
+db.civilizations.createIndex({"created_at": -1})
+db.relationships.createIndex({"civilization_a_id": 1, "civilization_b_id": 1})
+db.history.createIndex({"civilization_id": 1, "year": -1})
+```
+
+### Caching Strategy
+- Redis for frequently accessed data
+- Query result caching
+- Statistics caching
+
+### Async Operations
+- Non-blocking database operations
+- Concurrent request handling
+- Background task processing
+
+## Security Considerations
+
+### Input Validation
+- Pydantic model validation
+- SQL injection prevention (NoSQL)
+- XSS protection
+
+### Authentication (Future)
+- JWT token authentication
+- Role-based access control
+- API key management
+
+### Rate Limiting
+- Per-IP rate limiting
+- API key based limits
+- DDoS protection
+
+## Monitoring & Logging
+
+### Health Checks
+- Database connectivity
+- API endpoint health
+- Resource utilization
+
+### Metrics
+- Request count and timing
+- Error rates
+- Database performance
+
+### Logging
+- Structured logging
+- Error tracking
+- Audit trails
+
+## Testing Strategy
+
+### Unit Tests
+- Service layer testing
+- Model validation testing
+- Database operation testing
+
+### Integration Tests
+- API endpoint testing
+- Database integration
+- End-to-end workflows
+
+### Performance Tests
+- Load testing
+- Stress testing
+- Database performance
+
+## Development Workflow
+
+### Local Development
+1. Clone repository
+2. Set up virtual environment
+3. Install dependencies
+4. Configure environment
+5. Start development server
+
+### Docker Development
+1. Clone repository
+2. Copy environment template
+3. Run `docker-compose up`
+4. Access API and admin interfaces
+
+### Contributing
+1. Fork repository
+2. Create feature branch
+3. Implement changes
+4. Add tests
+5. Submit pull request
+
+This structure provides a robust, scalable foundation for the civilization database API while maintaining clean separation of concerns and following FastAPI best practices.

@@ -1,0 +1,77 @@
+# .env.example
+# Copy this file to .env and modify as needed
+
+# MongoDB Connection
+MONGO_URI=mongodb://localhost:27017
+DB_NAME=civilization_database
+
+# API Configuration
+API_TITLE=Civilization Database API
+API_VERSION=1.0.0
+DEBUG=True
+ENVIRONMENT=development
+
+# Pagination
+DEFAULT_PAGE_SIZE=100
+MAX_PAGE_SIZE=1000
+
+# Search Configuration
+SEARCH_LIMIT=1000
+SIMILARITY_THRESHOLD=0.5
+
+# Cache Configuration
+CACHE_EXPIRE_SECONDS=300
+
+# Security
+ALLOWED_ORIGINS=*
+API_KEY_HEADER=X-API-Key
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
+
+# Rate Limiting
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_PERIOD=60
+
+# Validation Limits
+MAX_TAGS_PER_CIVILIZATION=50
+MAX_DESCRIPTION_LENGTH=5000
+MAX_NAME_LENGTH=200
+
+# Analytics
+ENABLE_ANALYTICS=True
+ANALYTICS_BATCH_SIZE=1000
+
+# Export Settings
+EXPORT_FORMAT_DEFAULT=json
+EXPORT_MAX_RECORDS=10000
+
+# Template Settings
+MAX_TEMPLATES_PER_USER=100
+TEMPLATE_NAME_MAX_LENGTH=100
+
+# History Settings
+MAX_HISTORY_EVENTS_PER_CIVILIZATION=1000
+HISTORY_RETENTION_DAYS=3650
+
+# Relationship Settings
+MAX_RELATIONSHIPS_PER_CIVILIZATION=1000
+RELATIONSHIP_STRENGTH_PRECISION=2
+
+# Backup Settings
+BACKUP_ENABLED=False
+BACKUP_SCHEDULE=0 2 * * *
+BACKUP_RETENTION_DAYS=30
+
+# Monitoring
+HEALTH_CHECK_TIMEOUT=5
+METRICS_ENABLED=True
+
+# Development
+RELOAD_ON_CHANGE=True
+ENABLE_PROFILING=False
+
+# Mongo Express (for development)
+ME_CONFIG_BASICAUTH_USERNAME=admin
+ME_CONFIG_BASICAUTH_PASSWORD=password
