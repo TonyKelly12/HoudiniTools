@@ -3,7 +3,7 @@
 Pydantic models for civilization data validation and API documentation
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any  # Added Any import
 from enum import Enum
 from datetime import datetime
 
@@ -483,7 +483,7 @@ class AttributeDistribution(BaseModel):
     """Distribution of values for a specific attribute"""
 
     attribute_name: str
-    distribution: List[Dict[str, any]]
+    distribution: List[Dict[str, Any]]  # Fixed: changed 'any' to 'Any'
     total_civilizations: int
 
 
