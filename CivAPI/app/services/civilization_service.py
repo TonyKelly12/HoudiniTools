@@ -5,7 +5,6 @@ Service layer for civilization operations
 from fastapi import HTTPException
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
-from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from ..database import (
@@ -20,14 +19,9 @@ from ..database import (
     get_attribute_distribution,
     find_similar_civilizations,
     store_relationship,
-    get_relationship_by_id,
-    update_relationship,
-    list_relationships,
     get_civilization_relationships,
-    delete_relationship,
     store_history_event,
     get_civilization_history,
-    delete_history_event,
     store_template,
     list_templates,
     get_template_by_id,
@@ -45,10 +39,10 @@ async def create_civilization(metadata: CivilizationMetadata) -> str:
     try:
         # Convert metadata to dict
         civilization_data = {"metadata": metadata.model_dump()}
-        
+
         # Store in database
         civilization_id = await store_civilization(civilization_data)
-        
+
         return civilization_id
     except Exception as e:
         raise HTTPException(
@@ -66,10 +60,10 @@ async def get_civilization_by_id_service(civilization_id: str):
 
     try:
         document = await get_civilization_by_id(civilization_id)
-        
+
         if not document:
             raise HTTPException(status_code=404, detail="Civilization not found")
-        
+
         # Convert to response model
         response = CivilizationResponse(
             id=str(document["_id"]),
@@ -77,7 +71,7 @@ async def get_civilization_by_id_service(civilization_id: str):
             created_at=document["created_at"],
             updated_at=document["updated_at"],
         )
-        
+
         return response
     except HTTPException:
         raise
@@ -98,12 +92,12 @@ async def update_civilization_service(civilization_id: str, update_data: dict):
         # If metadata is being updated, validate it
         if "metadata" in update_data:
             CivilizationMetadata(**update_data["metadata"])
-        
+
         success = await update_civilization(civilization_id, update_data)
-        
+
         if not success:
             raise HTTPException(status_code=404, detail="Civilization not found")
-        
+
         return {"message": "Civilization updated successfully"}
     except HTTPException:
         raise
@@ -116,39 +110,12 @@ async def update_civilization_service(civilization_id: str, update_data: dict):
 async def list_civilizations_service(
     skip: int = 0,
     limit: int = 100,
-    government_type: Optional[str] = None,
-    technology_level: Optional[str] = None,
-    population_size: Optional[str] = None,
-    primary_economy: Optional[str] = None,
-    primary_religion: Optional[str] = None,
-    settlement_pattern: Optional[str] = None,
-    primary_terrain: Optional[str] = None,
-    tag: Optional[str] = None,
+    filters: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """List civilizations with optional filtering"""
-    # Build filters
-    filters = {}
-    
-    if government_type:
-        filters["metadata.government_type"] = government_type
-    if technology_level:
-        filters["metadata.technology_level"] = technology_level
-    if population_size:
-        filters["metadata.population_size"] = population_size
-    if primary_economy:
-        filters["metadata.primary_economy"] = primary_economy
-    if primary_religion:
-        filters["metadata.primary_religion"] = primary_religion
-    if settlement_pattern:
-        filters["metadata.settlement_pattern"] = settlement_pattern
-    if primary_terrain:
-        filters["metadata.primary_terrain"] = primary_terrain
-    if tag:
-        filters["metadata.tags"] = tag
-
+    """List civilizations with comprehensive filtering support"""
     try:
         documents, total_count = await list_civilizations(skip, limit, filters)
-        
+
         # Convert to response models
         civilizations = []
         for doc in documents:
@@ -160,7 +127,7 @@ async def list_civilizations_service(
                     updated_at=doc["updated_at"],
                 )
             )
-        
+
         return {
             "civilizations": civilizations,
             "total": total_count,
@@ -182,10 +149,10 @@ async def delete_civilization_service(civilization_id: str):
 
     try:
         success = await delete_civilization(civilization_id)
-        
+
         if not success:
             raise HTTPException(status_code=404, detail="Civilization not found")
-        
+
         return {"message": "Civilization deleted successfully"}
     except HTTPException:
         raise
@@ -201,7 +168,7 @@ async def search_civilizations_service(
     """Search civilizations by text"""
     try:
         documents, total_count = await search_civilizations(query, skip, limit)
-        
+
         # Convert to response models
         civilizations = []
         for doc in documents:
@@ -213,7 +180,7 @@ async def search_civilizations_service(
                     updated_at=doc["updated_at"],
                 )
             )
-        
+
         return {
             "civilizations": civilizations,
             "total": total_count,
@@ -235,7 +202,7 @@ async def get_civilizations_by_attribute_service(
         documents, total_count = await get_civilizations_by_attribute(
             attribute_name, attribute_value, skip, limit
         )
-        
+
         # Convert to response models
         civilizations = []
         for doc in documents:
@@ -247,7 +214,7 @@ async def get_civilizations_by_attribute_service(
                     updated_at=doc["updated_at"],
                 )
             )
-        
+
         return {
             "civilizations": civilizations,
             "total": total_count,
@@ -258,7 +225,8 @@ async def get_civilizations_by_attribute_service(
         }
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Error getting civilizations by attribute: {str(e)}"
+            status_code=500,
+            detail=f"Error getting civilizations by attribute: {str(e)}",
         )
 
 
@@ -277,10 +245,7 @@ async def get_attribute_distribution_service(attribute_name: str):
     """Get distribution of values for a specific attribute"""
     try:
         distribution = await get_attribute_distribution(attribute_name)
-        return {
-            "attribute": attribute_name,
-            "distribution": distribution
-        }
+        return {"attribute": attribute_name, "distribution": distribution}
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error getting attribute distribution: {str(e)}"
@@ -298,7 +263,7 @@ async def find_similar_civilizations_service(
 
     try:
         similar_civs = await find_similar_civilizations(civilization_id, threshold)
-        
+
         # Convert to response models
         civilizations = []
         for doc in similar_civs:
@@ -309,15 +274,17 @@ async def find_similar_civilizations_service(
                 updated_at=doc["updated_at"],
             )
             # Add similarity score to the response
-            civilizations.append({
-                "civilization": civ_response,
-                "similarity_score": doc["similarity_score"]
-            })
-        
+            civilizations.append(
+                {
+                    "civilization": civ_response,
+                    "similarity_score": doc["similarity_score"],
+                }
+            )
+
         return {
             "reference_civilization_id": civilization_id,
             "similar_civilizations": civilizations,
-            "threshold": threshold
+            "threshold": threshold,
         }
     except HTTPException:
         raise
@@ -333,7 +300,7 @@ async def create_relationship_service(
     civilization_b_id: str,
     relationship_type: str,
     relationship_strength: float,
-    description: Optional[str] = None
+    description: Optional[str] = None,
 ):
     """Create a relationship between two civilizations"""
     try:
@@ -345,9 +312,11 @@ async def create_relationship_service(
     # Verify both civilizations exist
     civ_a = await get_civilization_by_id(civilization_a_id)
     civ_b = await get_civilization_by_id(civilization_b_id)
-    
+
     if not civ_a or not civ_b:
-        raise HTTPException(status_code=404, detail="One or both civilizations not found")
+        raise HTTPException(
+            status_code=404, detail="One or both civilizations not found"
+        )
 
     try:
         relationship_data = {
@@ -357,7 +326,7 @@ async def create_relationship_service(
             "relationship_strength": relationship_strength,
             "description": description,
         }
-        
+
         relationship_id = await store_relationship(relationship_data)
         return {"id": relationship_id, "message": "Relationship created successfully"}
     except Exception as e:
@@ -375,7 +344,7 @@ async def get_civilization_relationships_service(civilization_id: str):
 
     try:
         relationships = await get_civilization_relationships(civilization_id)
-        
+
         # Convert to response models
         response_relationships = []
         for rel in relationships:
@@ -391,7 +360,7 @@ async def get_civilization_relationships_service(civilization_id: str):
                     updated_at=rel["updated_at"],
                 )
             )
-        
+
         return response_relationships
     except HTTPException:
         raise
@@ -410,7 +379,7 @@ async def add_history_event_service(
     year: Optional[int] = None,
     era: Optional[str] = None,
     impact_level: Optional[str] = None,
-    affected_attributes: Optional[List[str]] = None
+    affected_attributes: Optional[List[str]] = None,
 ):
     """Add a historical event to a civilization"""
     try:
@@ -434,7 +403,7 @@ async def add_history_event_service(
             "impact_level": impact_level,
             "affected_attributes": affected_attributes,
         }
-        
+
         event_id = await store_history_event(event_data)
         return {"id": event_id, "message": "History event added successfully"}
     except Exception as e:
@@ -453,8 +422,10 @@ async def get_civilization_history_service(
         raise HTTPException(status_code=400, detail="Invalid civilization ID format")
 
     try:
-        documents, total_count = await get_civilization_history(civilization_id, skip, limit)
-        
+        documents, total_count = await get_civilization_history(
+            civilization_id, skip, limit
+        )
+
         # Convert to response models
         events = []
         for doc in documents:
@@ -472,7 +443,7 @@ async def get_civilization_history_service(
                     created_at=doc["created_at"],
                 )
             )
-        
+
         return {
             "events": events,
             "total": total_count,
@@ -488,7 +459,9 @@ async def get_civilization_history_service(
 
 
 # Template services
-async def create_template_service(name: str, metadata: CivilizationMetadata, description: Optional[str] = None):
+async def create_template_service(
+    name: str, metadata: CivilizationMetadata, description: Optional[str] = None
+):
     """Create a civilization template"""
     try:
         template_data = {
@@ -496,7 +469,7 @@ async def create_template_service(name: str, metadata: CivilizationMetadata, des
             "description": description,
             "metadata": metadata.model_dump(),
         }
-        
+
         template_id = await store_template(template_data)
         return {"id": template_id, "message": "Template created successfully"}
     except Exception as e:
@@ -509,18 +482,20 @@ async def list_templates_service(skip: int = 0, limit: int = 100):
     """List civilization templates"""
     try:
         documents, total_count = await list_templates(skip, limit)
-        
+
         templates = []
         for doc in documents:
-            templates.append({
-                "id": str(doc["_id"]),
-                "name": doc["name"],
-                "description": doc.get("description"),
-                "metadata": doc["metadata"],
-                "created_at": doc["created_at"],
-                "updated_at": doc["updated_at"],
-            })
-        
+            templates.append(
+                {
+                    "id": str(doc["_id"]),
+                    "name": doc["name"],
+                    "description": doc.get("description"),
+                    "metadata": doc["metadata"],
+                    "created_at": doc["created_at"],
+                    "updated_at": doc["updated_at"],
+                }
+            )
+
         return {
             "templates": templates,
             "total": total_count,
@@ -533,7 +508,9 @@ async def list_templates_service(skip: int = 0, limit: int = 100):
         )
 
 
-async def create_civilization_from_template_service(template_id: str, overrides: Optional[dict] = None):
+async def create_civilization_from_template_service(
+    template_id: str, overrides: Optional[dict] = None
+):
     """Create a new civilization based on a template"""
     try:
         ObjectId(template_id)
@@ -544,24 +521,28 @@ async def create_civilization_from_template_service(template_id: str, overrides:
         template = await get_template_by_id(template_id)
         if not template:
             raise HTTPException(status_code=404, detail="Template not found")
-        
+
         # Start with template metadata
         metadata_dict = template["metadata"].copy()
-        
+
         # Apply any overrides
         if overrides:
             metadata_dict.update(overrides)
-        
+
         # Create civilization metadata
         metadata = CivilizationMetadata(**metadata_dict)
-        
+
         # Create the civilization
         civilization_id = await create_civilization(metadata)
-        
-        return {"id": civilization_id, "message": "Civilization created from template successfully"}
+
+        return {
+            "id": civilization_id,
+            "message": "Civilization created from template successfully",
+        }
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Error creating civilization from template: {str(e)}"
+            status_code=500,
+            detail=f"Error creating civilization from template: {str(e)}",
         )
