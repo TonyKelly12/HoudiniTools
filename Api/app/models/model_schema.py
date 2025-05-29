@@ -72,9 +72,7 @@ class ModelMetadata(BaseModel):
     is_weapon_part: bool = False
     weapon_part_metadata: Optional[WeaponPartMetadata] = None
     icon_path: Optional[str] = None
-    model_config = {
-        "protected_namespaces": ()
-    }
+    model_config = {"protected_namespaces": ()}
 
 
 class TextureType(str, Enum):
@@ -182,3 +180,47 @@ class WeaponAssemblyList(BaseModel):
     total: int
     page: int
     page_size: int
+
+    # Add to Api/app/models/model_schema.py
+
+
+class CivilizationCompatibility(BaseModel):
+    """Civilization compatibility metadata for assets"""
+
+    # Government compatibility
+    government_types: Optional[List[str]] = None  # ["monarchy", "democracy"]
+    government_score: Optional[float] = Field(None, ge=0.0, le=1.0)
+
+    # Technology constraints
+    tech_levels: Optional[List[str]] = None  # ["iron_age", "pre_industrial"]
+    min_tech_level: Optional[str] = None
+    max_tech_level: Optional[str] = None
+
+    # Cultural themes
+    cultural_values: Optional[List[str]] = (
+        None  # ["honor_based", "achievement_oriented"]
+    )
+    visual_themes: Optional[List[str]] = None  # ["ornate", "functional", "ceremonial"]
+
+    # Style tags
+    architectural_styles: Optional[List[str]] = (
+        None  # ["gothic", "classical", "futuristic"]
+    )
+    material_themes: Optional[List[str]] = (
+        None  # ["metallic", "organic", "crystalline"]
+    )
+
+    # Compatibility scores
+    overall_compatibility: Optional[float] = Field(None, ge=0.0, le=1.0)
+    usage_frequency: Optional[int] = Field(0, ge=0)  # Track popular combinations
+
+
+class EnhancedModelMetadata(ModelMetadata):
+    """Extended model metadata with civilization compatibility"""
+
+    civilization_compatibility: Optional[CivilizationCompatibility] = None
+
+    # Additional civilization-specific fields
+    historical_period: Optional[str] = None  # "medieval", "renaissance", "modern"
+    geographic_origin: Optional[str] = None  # "european", "asian", "fantasy"
+    social_class: Optional[str] = None  # "common", "noble", "royal"

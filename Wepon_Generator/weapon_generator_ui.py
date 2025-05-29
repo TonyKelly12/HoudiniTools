@@ -14,6 +14,8 @@ from PySide2.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkRe
 import tempfile
 import threading
 import time
+from typing import Dict, List
+
 
 # -----------------------------------------------------------------------------
 # API Communication Class
@@ -1907,3 +1909,206 @@ class WeaponPartUploadWidget(QtWidgets.QWidget):
         self.icon_path_label.clear()
         self.preview_label.setPixmap(QtGui.QPixmap())
         self.preview_label.setText("No preview")
+
+
+class CivilizationAwareWeaponGenerator:
+    def __init__(self):
+        self.context_api_url = "http://localhost:8001"  # Context Service URL
+        self.asset_api_url = "http://localhost:8000"  # Asset API URL
+
+    def get_civilization_context(self, civilization_id: str) -> Dict:
+        """Get civilization context for weapon generation"""
+        try:
+            response = requests.post(
+                f"{self.context_api_url}/context/analyze",
+                json={
+                    "civilization_id": civilization_id,
+                    "generator_type": "weapon",
+                    "user_preferences": {},
+                },
+            )
+            return response.json()
+        except Exception as e:
+            print(f"Failed to get civilization context: {e}")
+            return {}
+
+    def get_filtered_weapons(self, context: Dict) -> List[Dict]:
+        """Get weapons filtered by civilization context"""
+        if not context:
+            return []
+
+        try:
+            # Get recommended weapons from context
+            weapon_ids = [
+                rec["asset_id"] for rec in context.get("asset_recommendations", [])
+            ]
+
+            # Fetch full weapon data
+            weapons = []
+            for weapon_id in weapon_ids:
+                response = requests.get(
+                    f"{self.asset_api_url}/models/metadata/{weapon_id}"
+                )
+                if response.status_code == 200:
+                    weapons.append(response.json())
+
+            return weapons
+        except Exception as e:
+            print(f"Failed to get filtered weapons: {e}")
+            return []
+
+    def setup_houdini_parameters(self, context: Dict):
+        """Set up Houdini parameters based on civilization context"""
+        node = hou.pwd()
+
+        # Add civilization context parameters if they don't exist
+        if not node.parm("civilization_id"):
+            parm_group = node.parmTemplateGroup()
+
+            # Civilization selector
+            civ_parm = hou.StringParmTemplate(
+                "civilization_id", "Civilization ID", 1, default_value=("",)
+            )
+            parm_group.addParmTemplate(civ_parm)
+
+            # Style override toggles
+            override_parm = hou.ToggleParmTemplate(
+                "allow_style_override", "Allow Style Override", default_value=False
+            )
+            parm_group.addParmTemplate(override_parm)
+
+            # Display recommended themes
+            themes_parm = hou.StringParmTemplate(
+                "recommended_themes",
+                "Recommended Themes",
+                1,
+                default_value=("",),
+                string_type=hou.stringParmType.Regular,
+            )
+            themes_parm.setEnabled(False)  # Read-only
+            parm_group.addParmTemplate(themes_parm)
+
+            node.setParmTemplateGroup(parm_group)
+
+        # Update theme display
+        if context.get("style_guide"):
+            themes = ", ".join(context["style_guide"].get("visual_themes", []))
+            if node.parm("recommended_themes"):
+                node.parm("recommended_themes").set(themes)
+
+    def generate_civilization_weapon(self):
+        """Main generation function with civilization awareness"""
+        node = hou.pwd()
+
+        # Get civilization ID from parameter
+        civ_id = (
+            node.parm("civilization_id").evalAsString()
+            if node.parm("civilization_id")
+            else ""
+        )
+
+        if not civ_id:
+            print("No civilization selected. Using default generation.")
+            self.generate_default_weapon()
+            return
+
+        # Get civilization context
+        context = self.get_civilization_context(civ_id)
+
+        if not context:
+            print("Failed to get civilization context. Using default generation.")
+            self.generate_default_weapon()
+            return
+
+        # Update Houdini parameters with context
+        self.setup_houdini_parameters(context)
+
+        # Get filtered weapons
+        weapons = self.get_filtered_weapons(context)
+
+        if not weapons:
+            print("No suitable weapons found for this civilization.")
+            return
+
+        # Display civilization info to user
+        civ_name = context.get("civilization_name", "Unknown")
+        print(f"Generating weapon for: {civ_name}")
+
+        if context.get("style_guide"):
+            style = context["style_guide"]
+            print(f"Style themes: {', '.join(style.get('visual_themes', []))}")
+            print(f"Recommended materials: {', '.join(style.get('materials', []))}")
+
+        # Generate weapon using filtered assets
+        self.build_weapon_from_assets(weapons, context)
+
+    def build_weapon_from_assets(self, weapons: List[Dict], context: Dict):
+        """Build weapon in Houdini using filtered assets"""
+        node = hou.pwd()
+
+        # Clear existing geometry
+        for child in node.children():
+            if child.name().startswith("civ_weapon_"):
+                child.destroy()
+
+        # Create file nodes for each recommended weapon part
+        file_nodes = []
+        for i, weapon in enumerate(weapons[:5]):  # Limit to top 5 recommendations
+            file_node = node.createNode("file", f"civ_weapon_part_{i}")
+
+            # This would need to download the weapon file first
+            # For now, we'll use a placeholder path
+            weapon_path = f"/tmp/{weapon['filename']}"  # You'd download this
+            file_node.parm("file").set(weapon_path)
+
+            # Set display comment with weapon info
+            file_node.setComment(
+                f"{weapon['metadata']['name']} (Score: {weapon.get('compatibility_score', 'N/A')})"
+            )
+
+            file_nodes.append(file_node)
+
+        # Create assembly node
+        if file_nodes:
+            assembly_node = node.createNode("python", "civ_weapon_assembly")
+            assembly_node.parm("python").set(
+                """
+# Civilization-aware weapon assembly
+import hou
+
+node = hou.pwd()
+geo = node.geometry()
+
+# Get style preferences from civilization context
+# This would be populated by the civilization context
+style_themes = node.parent().parm("recommended_themes").evalAsString()
+
+# Merge input geometries with civilization-appropriate spacing and arrangement
+for i in range(len(node.inputs())):
+    input_node = node.input(i)
+    if input_node and input_node.geometry():
+        geo.merge(input_node.geometry())
+
+print(f"Assembled weapon with themes: {style_themes}")
+"""
+            )
+
+            # Connect file nodes to assembly
+            for i, file_node in enumerate(file_nodes):
+                assembly_node.setInput(i, file_node)
+
+            # Create output
+            output_node = node.createNode("null", "civ_weapon_output")
+            output_node.setInput(0, assembly_node)
+            output_node.setDisplayFlag(True)
+            output_node.setRenderFlag(True)
+
+    def generate_default_weapon(self):
+        """Fallback to original weapon generation logic"""
+        # Your existing weapon generation code here
+        print("Using default weapon generation (no civilization context)")
+
+
+# Create instance and run
+generator = CivilizationAwareWeaponGenerator()
+generator.generate_civilization_weapon()
