@@ -23,40 +23,40 @@ const CivilizationAssetBrowser = () => {
         id: 'iconography',
         title: 'Iconography',
         assets: [
-          { id: 1, name: 'Icon Set 1', thumbnail: '/api/placeholder/150/150', type: 'Icons', format: 'SVG', size: '2MB' },
-          { id: 2, name: 'Icon Set 2', thumbnail: '/api/placeholder/150/150', type: 'Icons', format: 'SVG', size: '1.5MB' },
-          { id: 3, name: 'Icon Set 3', thumbnail: '/api/placeholder/150/150', type: 'Icons', format: 'SVG', size: '3MB' },
-          { id: 4, name: 'Icon Set 4', thumbnail: '/api/placeholder/150/150', type: 'Icons', format: 'SVG', size: '2.2MB' }
+          { id: 1, name: 'Icon Set 1', thumbnail: '/mock-api/placeholders/iconographyThumbs/iconography1.png', type: 'Icons', format: 'SVG', size: '2MB' },
+          { id: 2, name: 'Icon Set 2', thumbnail: '/mock-api/placeholders/iconographyThumbs/iconography2.png', type: 'Icons', format: 'SVG', size: '1.5MB' },
+          { id: 3, name: 'Icon Set 3', thumbnail: '/mock-api/placeholders/iconographyThumbs/iconography3.png', type: 'Icons', format: 'SVG', size: '3MB' },
+          { id: 4, name: 'Icon Set 4', thumbnail: '/mock-api/placeholders/iconographyThumbs/iconography4.png', type: 'Icons', format: 'SVG', size: '2.2MB' }
         ]
       },
       {
         id: 'buildings',
         title: 'Buildings',
         assets: [
-          { id: 5, name: 'Medieval Castle', thumbnail: '/api/placeholder/150/150', type: '3D Model', format: 'FBX', size: '25MB' },
-          { id: 6, name: 'Town House', thumbnail: '/api/placeholder/150/150', type: '3D Model', format: 'FBX', size: '15MB' },
-          { id: 7, name: 'Watchtower', thumbnail: '/api/placeholder/150/150', type: '3D Model', format: 'FBX', size: '18MB' },
-          { id: 8, name: 'Market Stall', thumbnail: '/api/placeholder/150/150', type: '3D Model', format: 'FBX', size: '12MB' }
+          { id: 5, name: 'Medieval Castle', thumbnail: '/mock-api/placeholders/buildingThumbs/building1.jpg', type: '3D Model', format: 'FBX', size: '25MB' },
+          { id: 6, name: 'Town House', thumbnail: '/mock-api/placeholders/buildingThumbs/building2.jpg', type: '3D Model', format: 'FBX', size: '15MB' },
+          { id: 7, name: 'Watchtower', thumbnail: '/mock-api/placeholders/buildingThumbs/building3.jpg', type: '3D Model', format: 'FBX', size: '18MB' },
+          { id: 8, name: 'Market Stall', thumbnail: '/mock-api/placeholders/buildingThumbs/building4.jpg', type: '3D Model', format: 'FBX', size: '12MB' }
         ]
       },
       {
         id: 'weapons',
         title: 'Weapons',
         assets: [
-          { id: 9, name: 'Medieval Mace', thumbnail: '/api/placeholder/150/150', type: '3D Model', format: 'FBX', size: '8MB' },
-          { id: 10, name: 'Battle Axe', thumbnail: '/api/placeholder/150/150', type: '3D Model', format: 'FBX', size: '10MB' },
-          { id: 11, name: 'Long Sword', thumbnail: '/api/placeholder/150/150', type: '3D Model', format: 'FBX', size: '7MB' },
-          { id: 12, name: 'War Hammer', thumbnail: '/api/placeholder/150/150', type: '3D Model', format: 'FBX', size: '9MB' }
+          { id: 9, name: 'Medieval Mace', thumbnail: '/mock-api/placeholders/weaponThumbs/weapon1.jpg', type: '3D Model', format: 'FBX', size: '8MB' },
+          { id: 10, name: 'Battle Axe', thumbnail: '/mock-api/placeholders/weaponThumbs/weapon2.jpg', type: '3D Model', format: 'FBX', size: '10MB' },
+          { id: 11, name: 'Long Sword', thumbnail: '/mock-api/placeholders/weaponThumbs/weapon3.jpg', type: '3D Model', format: 'FBX', size: '7MB' },
+          { id: 12, name: 'War Hammer', thumbnail: '/mock-api/placeholders/weaponThumbs/weapon4.jpg', type: '3D Model', format: 'FBX', size: '9MB' }
         ]
       },
       {
         id: 'materials',
         title: 'Materials',
         assets: [
-          { id: 13, name: 'Stone Texture', thumbnail: '/api/placeholder/150/150', type: 'Material', format: 'PNG', size: '4MB' },
-          { id: 14, name: 'Wood Grain', thumbnail: '/api/placeholder/150/150', type: 'Material', format: 'PNG', size: '5MB' },
-          { id: 15, name: 'Metal Surface', thumbnail: '/api/placeholder/150/150', type: 'Material', format: 'PNG', size: '3MB' },
-          { id: 16, name: 'Fabric Pattern', thumbnail: '/api/placeholder/150/150', type: 'Material', format: 'PNG', size: '2MB' }
+          { id: 13, name: 'Stone Texture', thumbnail: '/mock-api/placeholders/materialThumbs/material1.jpg', type: 'Material', format: 'PNG', size: '4MB' },
+          { id: 14, name: 'Wood Grain', thumbnail: '/mock-api/placeholders/materialThumbs/material2.jpg', type: 'Material', format: 'PNG', size: '5MB' },
+          { id: 15, name: 'Metal Surface', thumbnail: '/mock-api/placeholders/materialThumbs/material3.jpg', type: 'Material', format: 'PNG', size: '3MB' },
+          { id: 16, name: 'Fabric Pattern', thumbnail: '/mock-api/placeholders/materialThumbs/material4.jpg', type: 'Material', format: 'PNG', size: '2MB' }
         ]
       }
     ];
