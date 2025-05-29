@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import Title from '../TitleComponent/TitleComponent';
+import List from '../ListComponent/ListComponent';
+import ListItem from '../ListItemComponent/ListItemComponent';
+import AssetCard from '../AssetCardComponent/AssetCardComponent';
+import CivilizationAssetCategoryList from '../CivilizationAssetListComponent/CivilizationAssetListComponent';
 import './CivilizationAssetBrowser.css';
-import Title from './titleComponent';
-import List from './listComponent';
-import ListItem from './listItemComponent';
-import AssetCard from './AssetCardComponent';
-import CivilizationAssetCategoryList from './CivilizationAssetListComponent';
-
 
 const CivilizationAssetBrowser = () => {
     const [selectedCivilization, setSelectedCivilization] = useState('Kingdom1');

@@ -1,6 +1,5 @@
-import './listItemComponent.css';
-
-const ListItem = ({ 
+import './ListItemComponent.css';
+const ListItemComponent = ({ 
     children, 
     isActive = false, 
     onClick, 
@@ -15,4 +14,4 @@ const ListItem = ({
       </div>
     );
   };
-  export default ListItem;
+  export default ListItemComponent;

@@ -1,6 +1,6 @@
-import Title from './titleComponent';
-import { Component } from 'react';
-const AssetCard = ({ 
+import Title from '../TitleComponent/TitleComponent';
+
+const AssetCardComponent = ({ 
     asset, 
     isVisible = false, 
     onClose, 
@@ -66,4 +66,4 @@ const AssetCard = ({
       </div>
     );
   };
-export default AssetCard;
+export default AssetCardComponent;

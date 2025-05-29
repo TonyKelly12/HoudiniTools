@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
+
 const CivilizationSelector = () => {
   const [civilizations, setCivilizations] = useState([]);
   const [selectedCiv, setSelectedCiv] = useState(null);

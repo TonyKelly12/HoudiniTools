@@ -1,0 +1,28 @@
+/* listItemComponent.css */
+.list-item {
+    padding: 12px 20px;
+    background-color: #333333;
+    color: #ffffff;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
+    font-size: 1rem;
+    font-weight: 500;
+  }
+  
+  .list-item:hover {
+    background-color: #404040;
+    transform: translateX(3px);
+  }
+  
+  .list-item.active {
+    background-color: #5555ff;
+    border-color: #4444dd;
+    font-weight: bold;
+  }
+  
+  .list-item.active:hover {
+    background-color: #4444dd;
+    transform: none;
+  }

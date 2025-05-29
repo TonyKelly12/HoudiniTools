@@ -1,0 +1,123 @@
+/* GalleryComponent.css */
+.gallery {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    position: relative;
+    width: 100%;
+  }
+  
+  .gallery-container {
+    flex: 1;
+    overflow: hidden;
+    border-radius: 8px;
+    position: relative;
+  }
+  
+  .gallery-track {
+    display: flex;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    gap: 15px;
+    width: fit-content;
+  }
+  
+  .gallery-item {
+    flex: 0 0 calc(33.333% - 10px);
+    min-width: calc(33.333% - 10px);
+    aspect-ratio: 1;
+    background-color: #444444;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+  }
+  
+  .gallery-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+  }
+  
+  .gallery-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  
+  /* Arrow button styling */
+  .arrow-button {
+    background-color: #5555ff;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    z-index: 2;
+  }
+  
+  .arrow-button:hover:not(.disabled) {
+    background-color: #4444dd;
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(85, 85, 255, 0.3);
+  }
+  
+  .arrow-button:active:not(.disabled) {
+    transform: scale(0.95);
+  }
+  
+  .arrow-button.disabled {
+    background-color: #666666;
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  
+  .arrow-button.left {
+    margin-right: 5px;
+  }
+  
+  .arrow-button.right {
+    margin-left: 5px;
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 1200px) {
+    .gallery-item {
+      flex: 0 0 calc(33.333% - 10px);
+      min-width: calc(33.333% - 10px);
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .gallery {
+      gap: 10px;
+    }
+    
+    .gallery-track {
+      gap: 10px;
+    }
+    
+    .gallery-item {
+      flex: 0 0 calc(50% - 5px);
+      min-width: calc(50% - 5px);
+    }
+    
+    .arrow-button {
+      width: 35px;
+      height: 35px;
+      font-size: 16px;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .gallery-item {
+      flex: 0 0 100%;
+      min-width: 100%;
+    }
+  }

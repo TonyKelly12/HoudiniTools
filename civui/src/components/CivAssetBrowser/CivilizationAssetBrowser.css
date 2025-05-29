@@ -1,0 +1,168 @@
+/* CivilizationAssetBrowser.css */
+.civilization-asset-browser {
+    display: flex;
+    min-height: 100vh;
+    background-color: #2a2a2a;
+    color: #ffffff;
+    font-family: 'Arial', sans-serif;
+  }
+  
+  /* Left Sidebar */
+  .sidebar {
+    width: 280px;
+    background-color: #1e1e1e;
+    padding: 20px;
+    border-right: 2px solid #444;
+  }
+  
+  .sidebar .title {
+    color: #ffffff;
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+    font-weight: bold;
+  }
+  
+  .civilization-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  /* Main Content */
+  .main-content {
+    flex: 1;
+    padding: 20px 40px;
+    overflow-y: auto;
+  }
+  
+  .civilization-title {
+    color: #ffffff;
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 40px;
+    text-align: center;
+  }
+  
+  .civilization-asset-category-list {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+  
+  /* Asset Categories */
+  .asset-category-item {
+    background-color: #333333;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #444;
+  }
+  
+  .asset-category-item .title {
+    color: #ffffff;
+    font-size: 1.8rem;
+    font-weight: bold;
+    margin-bottom: 20px;
+    text-align: left;
+  }
+  
+  /* Gallery Layout */
+  .gallery {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    position: relative;
+  }
+  
+  .gallery-container {
+    flex: 1;
+    overflow: hidden;
+    border-radius: 8px;
+  }
+  
+  .gallery-track {
+    display: flex;
+    transition: transform 0.3s ease;
+    gap: 15px;
+  }
+  
+  .gallery-item {
+    min-width: calc(33.333% - 10px);
+    background-color: #444;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  
+  .gallery-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Arrow Buttons */
+  .arrow-button {
+    background-color: #5555ff;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    flex-shrink: 0;
+  }
+  
+  .arrow-button:hover:not(.disabled) {
+    background-color: #4444dd;
+    transform: scale(1.1);
+  }
+  
+  .arrow-button:active:not(.disabled) {
+    transform: scale(0.95);
+  }
+  
+  .arrow-button.disabled {
+    background-color: #666;
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  
+  /* Responsive Design */
+  @media (max-width: 1200px) {
+    .sidebar {
+      width: 240px;
+    }
+    
+    .main-content {
+      padding: 20px;
+    }
+    
+    .civilization-title {
+      font-size: 2rem;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .civilization-asset-browser {
+      flex-direction: column;
+    }
+    
+    .sidebar {
+      width: 100%;
+      padding: 15px;
+    }
+    
+    .civilization-list {
+      flex-direction: row;
+      overflow-x: auto;
+      gap: 10px;
+    }
+    
+    .gallery-item {
+      min-width: calc(50% - 7.5px);
+    }
+  }

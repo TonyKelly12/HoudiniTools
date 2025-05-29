@@ -1,4 +1,4 @@
-import AssetCategoryItem from './AssetCategoryComponent';
+import AssetCategoryItem from '../AssetCategoryComponent/AssetCategoryComponent';
 
 const CivilizationAssetCategoryList = ({ 
     categories = [], 

@@ -1,0 +1,56 @@
+/* ThumbnailComponent.css */
+.thumbnail {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    background-color: #444444;
+    aspect-ratio: 1;
+  }
+  
+  .thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  
+  .thumbnail-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  
+  .thumbnail:hover .thumbnail-overlay {
+    opacity: 1;
+  }
+  
+  .thumbnail:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Different thumbnail types */
+  .thumbnail.image {
+    /* Default styling */
+  }
+  
+  .thumbnail.video {
+    border: 2px solid #ffcc00;
+  }
+  
+  .thumbnail.document {
+    border: 2px solid #00ccff;
+  }

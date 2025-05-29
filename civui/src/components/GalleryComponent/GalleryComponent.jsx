@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import Thumbnail from './ThumbnailComponent';
-import ArrowButton from './ArrowButtonComponent';
-
+import Thumbnail from '../ThumbnailComponent/ThumbnailComponent';
+import ArrowButton from '../ArrowButtonComponent/ArrowButtonComponent';
+import './GalleryComponent.css';
 const Gallery = ({ 
     items = [], 
     onItemClick, 

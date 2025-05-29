@@ -1,5 +1,5 @@
-import Title from './titleComponent';
-import Gallery from './GalleryComponent';
+import Title from '../TitleComponent/TitleComponent';
+import Gallery from '../GalleryComponent/GalleryComponent';
 
 const AssetCategoryItem = ({ 
     title, 

@@ -1,6 +1,5 @@
-import './titleComponent.css';
-
-const Title = ({ 
+import './TitleComponent.css';
+const TitleComponent = ({ 
   children, 
   level = 1, 
   className = '',
@@ -13,4 +12,4 @@ const Title = ({
     </Tag>
   );
 };
-export default Title;
+export default TitleComponent;

@@ -1,0 +1,175 @@
+/* AssetCardComponent.css */
+.asset-card-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+  
+  .asset-card {
+    background-color: #2a2a2a;
+    border-radius: 12px;
+    max-width: 800px;
+    max-height: 90vh;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+  
+  .close-button {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: none;
+    border: none;
+    color: #ffffff;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 1001;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease;
+  }
+  
+  .close-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .asset-card-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: 90vh;
+    overflow: hidden;
+  }
+  
+  .asset-preview {
+    flex-shrink: 0;
+    height: 300px;
+    background-color: #1e1e1e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid #444;
+  }
+  
+  .asset-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  
+  .asset-details {
+    padding: 30px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  
+  .asset-details .title {
+    margin-bottom: 15px;
+    color: #ffffff;
+  }
+  
+  .asset-description {
+    color: #cccccc;
+    line-height: 1.6;
+    margin-bottom: 25px;
+    font-size: 1rem;
+  }
+  
+  .asset-metadata {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+  }
+  
+  .metadata-item {
+    color: #ffffff;
+    font-size: 0.95rem;
+  }
+  
+  .metadata-item strong {
+    color: #5555ff;
+    margin-right: 8px;
+  }
+  
+  .asset-actions {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+  }
+  
+  .asset-actions button {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    min-width: 120px;
+  }
+  
+  .download-button.primary {
+    background-color: #5555ff;
+    color: white;
+  }
+  
+  .download-button.primary:hover {
+    background-color: #4444dd;
+    transform: translateY(-2px);
+  }
+  
+  .preview-button.secondary,
+  .info-button.secondary {
+    background-color: #333333;
+    color: #ffffff;
+    border: 1px solid #555555;
+  }
+  
+  .preview-button.secondary:hover,
+  .info-button.secondary:hover {
+    background-color: #404040;
+    transform: translateY(-2px);
+  }
+  
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .asset-card {
+      margin: 10px;
+      max-height: 95vh;
+    }
+    
+    .asset-card-content {
+      flex-direction: column;
+    }
+    
+    .asset-preview {
+      height: 200px;
+    }
+    
+    .asset-details {
+      padding: 20px;
+    }
+    
+    .asset-actions {
+      flex-direction: column;
+    }
+    
+    .asset-actions button {
+      width: 100%;
+    }
+  }

@@ -1,0 +1,14 @@
+/* listComponent.css */
+.list {
+    display: flex;
+    gap: 10px;
+  }
+  
+  .list.vertical {
+    flex-direction: column;
+  }
+  
+  .list.horizontal {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }

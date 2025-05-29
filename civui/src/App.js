@@ -1,5 +1,5 @@
 import './App.css';
-import CivilizationAssetBrowser from './components/CivilizationAssetBrowser';
+import CivilizationAssetBrowser from './components/CivAssetBrowser/CivilizationAssetBrowser';
 function App() {
   return (
     <div className="App">

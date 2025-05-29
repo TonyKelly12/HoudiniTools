@@ -1,6 +1,5 @@
 import './ThumbnailComponent.css';
-
-const Thumbnail = ({ 
+const ThumbnailComponent = ({ 
     src, 
     alt, 
     onClick, 
@@ -19,4 +18,4 @@ const Thumbnail = ({
       </div>
     );
   };
-export default Thumbnail;
+export default ThumbnailComponent;
