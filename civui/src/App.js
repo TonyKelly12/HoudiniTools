@@ -1,11 +1,10 @@
-import logo from './logo.svg';
 import './App.css';
-import CivilizationSelector from './components/civilaztionSelector';
+import CivilizationAssetBrowser from './components/CivilizationAssetBrowser';
 function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <CivilizationSelector />
+        <CivilizationAssetBrowser />
       </header>
     </div>
   );

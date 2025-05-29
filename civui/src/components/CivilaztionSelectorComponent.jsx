@@ -14,7 +14,7 @@ const CivilizationSelector = () => {
 
   const fetchCivilizations = async () => {
     try {
-      const response = await axios.get('http://localhost:8002/civilizations/');
+      const response = await axios.get('http://localhost:8000/civilizations/');
       setCivilizations(response.data.civilizations);
     } catch (error) {
       console.error('Failed to fetch civilizations:', error);
