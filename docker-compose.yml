@@ -1,0 +1,68 @@
+services:
+  weapons-api:
+    build:
+      context: ./WeaponsApi
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/weapons_db
+    depends_on:
+      - db
+    volumes:
+      - ./WeaponsApi:/app
+      - weapon_models:/app/storage
+    networks:
+      - weapon_network
+
+  civ-context-api:
+    build:
+      context: ./CivContextAPI
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/civ_context_db
+    depends_on:
+      - db
+    volumes:
+      - ./CivContextAPI:/app
+    networks:
+      - weapon_network
+
+  civ-api:
+    build:
+      context: ./CivAPI
+      dockerfile: dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/civ_db
+    depends_on:
+      - db
+    volumes:
+      - ./CivAPI:/app
+    networks:
+      - weapon_network
+
+  db:
+    image: postgres:14
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_MULTIPLE_DATABASES=weapons_db,civ_context_db,civ_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+    networks:
+      - weapon_network
+
+volumes:
+  postgres_data:
+  weapon_models:
+
+networks:
+  weapon_network:
+    driver: bridge
