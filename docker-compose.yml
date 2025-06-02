@@ -1,17 +1,30 @@
 services:
-  weapons-api:
+  civui:
     build:
-      context: ./WeaponsApi
+      context: ./civui
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/weapons_db
-    depends_on:
-      - db
+      - CHOKIDAR_USEPOLLING=true
     volumes:
-      - ./WeaponsApi:/app
-      - weapon_models:/app/storage
+      - ./civui:/app
+    networks:
+      - weapon_network
+
+  civ-api:
+    build:
+      context: ./CivAPI
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - DB_NAME=civilization_database
+    depends_on:
+      - mongodb
+    volumes:
+      - ./CivAPI:/app
     networks:
       - weapon_network
 
@@ -20,7 +33,7 @@ services:
       context: ./CivContextAPI
       dockerfile: Dockerfile
     ports:
-      - "8001:8001"
+      - "8002:8002"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/civ_context_db
     depends_on:
@@ -30,27 +43,43 @@ services:
     networks:
       - weapon_network
 
-  civ-api:
+  weapons-api:
     build:
-      context: ./CivAPI
+      context: ./WeaponsApi
       dockerfile: dockerfile
     ports:
-      - "8002:8002"
+      - "8003:8003"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/civ_db
+      - MONGO_URI=mongodb://mongodb:27017
+      - DB_NAME=model_database
     depends_on:
-      - db
+      - mongodb
     volumes:
-      - ./CivAPI:/app
+      - ./WeaponsApi:/app
+      - weapon_models:/app/storage
     networks:
       - weapon_network
 
+  # Add MongoDB service for WeaponsApi and CivApi
+  mongodb:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=model_database
+    networks:
+      - weapon_network
+    restart: unless-stopped
+
+  # Keep PostgreSQL for CivContextAPI
   db:
     image: postgres:14
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - POSTGRES_MULTIPLE_DATABASES=weapons_db,civ_context_db,civ_db
+      - POSTGRES_MULTIPLE_DATABASES=civ_context_db
     ports:
       - "5432:5432"
     volumes:
@@ -59,8 +88,24 @@ services:
     networks:
       - weapon_network
 
+  # Optional: Add Mongo Express for MongoDB management
+  mongo-express:
+    image: mongo-express
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://mongodb:27017/
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=password
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+    networks:
+      - weapon_network
+
 volumes:
   postgres_data:
+  mongodb_data:  # Add MongoDB volume
   weapon_models:
 
 networks:
