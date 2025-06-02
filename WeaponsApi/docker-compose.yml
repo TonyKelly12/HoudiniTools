@@ -1,0 +1,48 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - model_storage:/app/storage
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - DB_NAME=model_database
+      - STORAGE_DIR=/app/storage
+      - UVICORN_TIMEOUT=300
+    depends_on:
+      - mongodb
+    networks:
+      - model-api-network
+
+  mongodb:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - model-api-network
+
+  mongo-express:
+    image: mongo-express
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://mongodb:27017/
+      - ME_CONFIG_BASICAUTH_USERNAME=${ME_CONFIG_BASICAUTH_USERNAME}
+      - ME_CONFIG_BASICAUTH_PASSWORD=${ME_CONFIG_BASICAUTH_PASSWORD}
+    depends_on:
+      - mongodb
+    restart: always
+    networks:
+      - model-api-network
+
+networks:
+  model-api-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  model_storage:

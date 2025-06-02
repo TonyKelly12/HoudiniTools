@@ -7,8 +7,8 @@ browse and select weapon parts from an online parts library.
 
 import hou
 from PySide2 import QtWidgets
+import requests
 
-from .api.weapon_assembly_api import WeaponAssemblyAPI
 from .ui.weapon_part_upload_widget import WeaponPartUploadWidget
 from .core.civilization_aware_generator import CivilizationAwareWeaponGenerator
 
@@ -39,3 +39,22 @@ def generate_default_weapon():
     """Generate a default weapon"""
     generator = CivilizationAwareWeaponGenerator()
     generator.generate_default_weapon()
+
+
+class WeaponAssemblyAPI:
+    def __init__(self, base_url="http://localhost:8000"):
+        self.base_url = base_url
+        self.headers = {"Content-Type": "application/json", "Accept": "application/json"}
+
+    def create_assembly(self, assembly_data):
+        try:
+            url = f"{self.base_url}/assemblies"
+            response = requests.post(url, json=assembly_data, headers=self.headers)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"API Error ({response.status_code}): {response.text}")
+                return None
+        except Exception as e:
+            print(f"Error creating assembly: {str(e)}")
+            return None

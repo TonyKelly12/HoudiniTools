@@ -1,0 +1,596 @@
+{
+	"info": {
+		"_postman_id": "3d-weapon-assembly-api",
+		"name": "3D Weapon Assembly API",
+		"description": "API for storing, retrieving, and assembling 3D weapon models and textures",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "3D Models",
+			"item": [
+				{
+					"name": "Upload Model",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "metadata_json",
+									"type": "text",
+									"value": "{\n    \"name\": \"Example Sword\",\n    \"description\": \"A basic sword model\",\n    \"format\": \"fbx\",\n    \"tags\": [\"sword\", \"weapon\"],\n    \"is_weapon_part\": true,\n    \"weapon_part_metadata\": {\n        \"weapon_type\": \"sword\",\n        \"part_type\": \"blade\"\n    }\n}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/models",
+							"host": ["{{base_url}}"],
+							"path": ["models"]
+						},
+						"description": "Upload a 3D model file with metadata"
+					}
+				},
+				{
+					"name": "List Models",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models?skip=0&limit=100",
+							"host": ["{{base_url}}"],
+							"path": ["models"],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								},
+								{
+									"key": "tag",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "category",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "is_weapon_part",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "weapon_type",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "part_type",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "List all 3D models with optional filtering"
+					}
+				},
+				{
+					"name": "Get Weapon Parts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/weapon-parts?weapon_type=sword&part_type=blade",
+							"host": ["{{base_url}}"],
+							"path": ["models", "weapon-parts"],
+							"query": [
+								{
+									"key": "weapon_type",
+									"value": "sword",
+									"description": "Type of weapon"
+								},
+								{
+									"key": "part_type",
+									"value": "blade",
+									"description": "Type of part",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all parts for a specific weapon type"
+					}
+				},
+				{
+					"name": "Get Model by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/:model_id",
+							"host": ["{{base_url}}"],
+							"path": ["models", ":model_id"],
+							"variable": [
+								{
+									"key": "model_id",
+									"value": "",
+									"description": "ID of the model to retrieve"
+								}
+							]
+						},
+						"description": "Get a 3D model file by its ID"
+					}
+				},
+				{
+					"name": "Get Model Metadata",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/metadata/:model_id",
+							"host": ["{{base_url}}"],
+							"path": ["models", "metadata", ":model_id"],
+							"variable": [
+								{
+									"key": "model_id",
+									"value": "",
+									"description": "ID of the model"
+								}
+							]
+						},
+						"description": "Get a 3D model's metadata without downloading the file"
+					}
+				},
+				{
+					"name": "Delete Model",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/models/:model_id",
+							"host": ["{{base_url}}"],
+							"path": ["models", ":model_id"],
+							"variable": [
+								{
+									"key": "model_id",
+									"value": "",
+									"description": "ID of the model to delete"
+								}
+							]
+						},
+						"description": "Delete a 3D model by its ID"
+					}
+				}
+			],
+			"description": "Operations for managing 3D model assets with weapon part support"
+		},
+		{
+			"name": "Textures",
+			"item": [
+				{
+					"name": "Upload Texture",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "metadata_json",
+									"type": "text",
+									"value": "{\n    \"name\": \"Sword Blade Diffuse\",\n    \"description\": \"Diffuse texture for sword blade\",\n    \"format\": \"png\",\n    \"texture_type\": \"diffuse\",\n    \"weapon_type\": \"sword\",\n    \"part_type\": \"blade\",\n    \"resolution\": {\"width\": 2048, \"height\": 2048},\n    \"is_tiling\": true\n}"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/textures",
+							"host": ["{{base_url}}"],
+							"path": ["textures"]
+						},
+						"description": "Upload a texture file with metadata"
+					}
+				},
+				{
+					"name": "List Textures",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/textures?skip=0&limit=100",
+							"host": ["{{base_url}}"],
+							"path": ["textures"],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								},
+								{
+									"key": "model_id",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "weapon_type",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "part_type",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "texture_type",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "List all textures with optional filtering"
+					}
+				},
+				{
+					"name": "Get Weapon Textures",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/textures/weapon/:weapon_type",
+							"host": ["{{base_url}}"],
+							"path": ["textures", "weapon", ":weapon_type"],
+							"query": [
+								{
+									"key": "part_type",
+									"value": "",
+									"description": "Type of part",
+									"disabled": true
+								},
+								{
+									"key": "texture_type",
+									"value": "",
+									"description": "Type of texture",
+									"disabled": true
+								},
+								{
+									"key": "variant",
+									"value": "",
+									"description": "Variant name",
+									"disabled": true
+								}
+							],
+							"variable": [
+								{
+									"key": "weapon_type",
+									"value": "sword",
+									"description": "Type of weapon"
+								}
+							]
+						},
+						"description": "Get textures for a specific weapon type"
+					}
+				},
+				{
+					"name": "Get Model Textures",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/textures/model/:model_id",
+							"host": ["{{base_url}}"],
+							"path": ["textures", "model", ":model_id"],
+							"query": [
+								{
+									"key": "texture_type",
+									"value": "",
+									"description": "Type of texture",
+									"disabled": true
+								}
+							],
+							"variable": [
+								{
+									"key": "model_id",
+									"value": "",
+									"description": "ID of the model"
+								}
+							]
+						},
+						"description": "Get all textures associated with a specific model"
+					}
+				},
+				{
+					"name": "Get Texture by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/textures/:texture_id",
+							"host": ["{{base_url}}"],
+							"path": ["textures", ":texture_id"],
+							"variable": [
+								{
+									"key": "texture_id",
+									"value": "",
+									"description": "ID of the texture to retrieve"
+								}
+							]
+						},
+						"description": "Get a texture file by its ID"
+					}
+				},
+				{
+					"name": "Get Texture Metadata",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/textures/metadata/:texture_id",
+							"host": ["{{base_url}}"],
+							"path": ["textures", "metadata", ":texture_id"],
+							"variable": [
+								{
+									"key": "texture_id",
+									"value": "",
+									"description": "ID of the texture"
+								}
+							]
+						},
+						"description": "Get a texture's metadata without downloading the file"
+					}
+				},
+				{
+					"name": "Get Texture by Name",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/textures/name/:filename",
+							"host": ["{{base_url}}"],
+							"path": ["textures", "name", ":filename"],
+							"variable": [
+								{
+									"key": "filename",
+									"value": "",
+									"description": "Filename of the texture"
+								}
+							]
+						},
+						"description": "Get a texture file by its filename"
+					}
+				},
+				{
+					"name": "Delete Texture",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/textures/:texture_id",
+							"host": ["{{base_url}}"],
+							"path": ["textures", ":texture_id"],
+							"variable": [
+								{
+									"key": "texture_id",
+									"value": "",
+									"description": "ID of the texture to delete"
+								}
+							]
+						},
+						"description": "Delete a texture by its ID"
+					}
+				}
+			],
+			"description": "Operations for managing texture assets with specialized organization"
+		},
+		{
+			"name": "Weapon Assemblies",
+			"item": [
+				{
+					"name": "Create Assembly",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Basic Steel Sword\",\n    \"description\": \"A simple steel sword\",\n    \"weapon_type\": \"sword\",\n    \"parts\": [\n        {\n            \"model_id\": \"handle_model_id\",\n            \"part_type\": \"handle\",\n            \"position\": {\"x\": 0, \"y\": 0, \"z\": 0},\n            \"rotation\": {\"x\": 0, \"y\": 0, \"z\": 0},\n            \"scale\": {\"x\": 1, \"y\": 1, \"z\": 1}\n        },\n        {\n            \"model_id\": \"blade_model_id\",\n            \"part_type\": \"blade\",\n            \"position\": {\"x\": 0, \"y\": 0.5, \"z\": 0},\n            \"rotation\": {\"x\": 0, \"y\": 0, \"z\": 0},\n            \"scale\": {\"x\": 1, \"y\": 1, \"z\": 1},\n            \"material_overrides\": {\n                \"blade_mat\": \"blade_texture_id\"\n            }\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/assemblies",
+							"host": ["{{base_url}}"],
+							"path": ["assemblies"]
+						},
+						"description": "Create a new weapon assembly"
+					}
+				},
+				{
+					"name": "List Assemblies",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/assemblies?skip=0&limit=100",
+							"host": ["{{base_url}}"],
+							"path": ["assemblies"],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								},
+								{
+									"key": "weapon_type",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "tag",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "List all weapon assemblies with optional filtering"
+					}
+				},
+				{
+					"name": "Get Assembly",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/assemblies/:assembly_id",
+							"host": ["{{base_url}}"],
+							"path": ["assemblies", ":assembly_id"],
+							"variable": [
+								{
+									"key": "assembly_id",
+									"value": "",
+									"description": "ID of the assembly to retrieve"
+								}
+							]
+						},
+						"description": "Get a weapon assembly by its ID"
+					}
+				},
+				{
+					"name": "Update Assembly",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated Sword Name\",\n    \"description\": \"Updated description\",\n    \"tags\": [\"updated\", \"modified\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/assemblies/:assembly_id",
+							"host": ["{{base_url}}"],
+							"path": ["assemblies", ":assembly_id"],
+							"variable": [
+								{
+									"key": "assembly_id",
+									"value": "",
+									"description": "ID of the assembly to update"
+								}
+							]
+						},
+						"description": "Update a weapon assembly"
+					}
+				},
+				{
+					"name": "Update Assembly Parts",
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "[\n    {\n        \"model_id\": \"new_handle_id\",\n        \"part_type\": \"handle\",\n        \"position\": {\"x\": 0, \"y\": 0, \"z\": 0},\n        \"rotation\": {\"x\": 0, \"y\": 0, \"z\": 0},\n        \"scale\": {\"x\": 1, \"y\": 1, \"z\": 1}\n    },\n    {\n        \"model_id\": \"new_blade_id\",\n        \"part_type\": \"blade\",\n        \"position\": {\"x\": 0, \"y\": 0.5, \"z\": 0},\n        \"rotation\": {\"x\": 0, \"y\": 0, \"z\": 0},\n        \"scale\": {\"x\": 1, \"y\": 1, \"z\": 1}\n    }\n]",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/assemblies/:assembly_id/parts",
+							"host": ["{{base_url}}"],
+							"path": ["assemblies", ":assembly_id", "parts"],
+							"variable": [
+								{
+									"key": "assembly_id",
+									"value": "",
+									"description": "ID of the assembly to update"
+								}
+							]
+						},
+						"description": "Update only the parts of a weapon assembly"
+					}
+				},
+				{
+					"name": "Delete Assembly",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/assemblies/:assembly_id",
+							"host": ["{{base_url}}"],
+							"path": ["assemblies", ":assembly_id"],
+							"variable": [
+								{
+									"key": "assembly_id",
+									"value": "",
+									"description": "ID of the assembly to delete"
+								}
+							]
+						},
+						"description": "Delete a weapon assembly by its ID"
+					}
+				},
+				{
+					"name": "Duplicate Assembly",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/assemblies/:assembly_id/duplicate?new_name=Duplicated Assembly",
+							"host": ["{{base_url}}"],
+							"path": ["assemblies", ":assembly_id", "duplicate"],
+							"query": [
+								{
+									"key": "new_name",
+									"value": "Duplicated Assembly",
+									"description": "Name for the new assembly"
+								}
+							],
+							"variable": [
+								{
+									"key": "assembly_id",
+									"value": "",
+									"description": "ID of the assembly to duplicate"
+								}
+							]
+						},
+						"description": "Duplicate an existing weapon assembly"
+					}
+				}
+			],
+			"description": "Operations for creating and managing weapon assemblies"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		}
+	]
+} 

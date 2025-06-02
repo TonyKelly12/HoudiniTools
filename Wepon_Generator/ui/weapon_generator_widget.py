@@ -8,9 +8,26 @@ import hou
 from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtNetwork import QNetworkAccessManager, QNetworkReply
 import threading
+import requests
 
 
-from ..api.weapon_assembly_api import WeaponAssemblyAPI
+class WeaponAssemblyAPI:
+    def __init__(self, base_url="http://localhost:8000"):
+        self.base_url = base_url
+        self.headers = {"Content-Type": "application/json", "Accept": "application/json"}
+
+    def create_assembly(self, assembly_data):
+        try:
+            url = f"{self.base_url}/assemblies"
+            response = requests.post(url, json=assembly_data, headers=self.headers)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"API Error ({response.status_code}): {response.text}")
+                return None
+        except Exception as e:
+            print(f"Error creating assembly: {str(e)}")
+            return None
 
 
 class WeaponGeneratorWidget(QtWidgets.QWidget):

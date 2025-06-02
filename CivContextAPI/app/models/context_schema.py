@@ -23,6 +23,9 @@ class AssetRecommendation(BaseModel):
     asset_type: str
     compatibility_score: float
     reasons: List[str]
+    mesh: Optional[str] = None  # Path or identifier for mesh asset
+    texture: Optional[str] = None  # Path or identifier for texture asset
+    database_source: Optional[str] = None  # Which DB or API this asset comes from
 
 
 class StyleGuide(BaseModel):

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.routes.civilizations import router as civilizations_router
 
 app = FastAPI(title="Civilization Context API")
 
@@ -12,11 +13,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(civilizations_router)
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
 
+    uvicorn.run(app, host="0.0.0.0", port=8001)
