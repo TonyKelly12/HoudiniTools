@@ -1,6 +1,5 @@
 import hou
 
-
 # Access the current node
 node = hou.pwd()
 geo = node.geometry()
