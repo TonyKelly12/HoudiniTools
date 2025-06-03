@@ -1,6 +1,9 @@
-# app/models/context_schema.py
+"""
+Enhanced context schema with weapons integration
+"""
+
 from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from enum import Enum
 
 
@@ -11,21 +14,32 @@ class GeneratorType(str, Enum):
     CHARACTER = "character"
 
 
-class ContextRequest(BaseModel):
-    civilization_id: str
-    generator_type: GeneratorType
-    user_preferences: Optional[Dict] = {}
-    override_suggestions: Optional[List[str]] = []
-
-
 class AssetRecommendation(BaseModel):
     asset_id: str
     asset_type: str
     compatibility_score: float
     reasons: List[str]
-    mesh: Optional[str] = None  # Path or identifier for mesh asset
-    texture: Optional[str] = None  # Path or identifier for texture asset
-    database_source: Optional[str] = None  # Which DB or API this asset comes from
+    mesh: Optional[str] = None
+    texture: Optional[str] = None
+    database_source: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class WeaponRecommendation(AssetRecommendation):
+    """Enhanced recommendation specifically for weapons"""
+
+    weapon_type: Optional[str] = None
+    part_type: Optional[str] = None
+    technology_level: Optional[str] = None
+    cultural_fit: Optional[str] = None
+    government_appropriateness: Optional[str] = None
+
+
+class ContextRequest(BaseModel):
+    civilization_id: str
+    generator_type: GeneratorType
+    user_preferences: Optional[Dict] = {}
+    override_suggestions: Optional[List[str]] = []
 
 
 class StyleGuide(BaseModel):
@@ -35,9 +49,31 @@ class StyleGuide(BaseModel):
     design_principles: List[str]
 
 
+class WeaponAnalysis(BaseModel):
+    """Analysis of civilization context for weapons"""
+
+    allowed_weapon_types: List[str]
+    technology_constraints: Dict[str, Any]
+    government_aesthetics: Dict[str, Any]
+    cultural_aesthetics: Dict[str, Any]
+    military_context: Dict[str, Any]
+
+
 class ContextResponse(BaseModel):
     civilization_name: str
     context_summary: Dict[str, str]
     asset_recommendations: List[AssetRecommendation]
     style_guide: StyleGuide
     prohibited_items: List[str]
+
+
+class WeaponContextResponse(BaseModel):
+    """Specialized response for weapon context"""
+
+    civilization_id: str
+    civilization_name: str
+    weapon_analysis: WeaponAnalysis
+    recommendations: List[WeaponRecommendation]
+    assemblies: Optional[List[Dict[str, Any]]] = None
+    style_guide: StyleGuide
+    prohibited_weapons: List[str]

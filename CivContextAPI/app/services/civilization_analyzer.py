@@ -1,72 +1,134 @@
 # app/services/civilization_analyzer.py
-import httpx
-from typing import Dict
+from typing import Dict, Any
 
 
 class CivilizationAnalyzer:
-    def __init__(self, civ_api_url: str):
-        self.civ_api_url = civ_api_url
+    """Analyzes civilization data to determine weapon compatibility"""
 
-    async def analyze_civilization(self, civ_id: str) -> Dict:
-        """Fetch and analyze civilization data"""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{self.civ_api_url}/civilizations/{civ_id}")
-            civ_data = response.json()
+    @staticmethod
+    def analyze_weapon_compatibility(civ_metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze civilization to determine appropriate weapons"""
 
-        return {
-            "government_influence": self._analyze_government(civ_data["metadata"]),
-            "tech_constraints": self._analyze_technology(civ_data["metadata"]),
-            "cultural_aesthetics": self._analyze_culture(civ_data["metadata"]),
-            "military_requirements": self._analyze_military(civ_data["metadata"]),
+        tech_level = civ_metadata.get("technology_level", "iron_age")
+        government_type = civ_metadata.get("government_type", "monarchy")
+        military_structure = civ_metadata.get("military_structure", "militia")
+        cultural_values = civ_metadata.get("cultural_values", "honor_based")
+        primary_weapons = civ_metadata.get("primary_weapons", "melee")
+
+        # Technology constraints
+        tech_weapon_mapping = {
+            "stone_age": ["spear", "club", "dagger"],
+            "bronze_age": ["sword", "spear", "axe", "bow"],
+            "iron_age": ["sword", "spear", "axe", "bow", "mace"],
+            "pre_industrial": ["sword", "spear", "axe", "bow", "mace", "rifle"],
+            "industrial": ["rifle", "gun", "sword", "bow"],
+            "information_age": ["rifle", "gun", "advanced"],
+            "post_scarcity": ["rifle", "gun", "advanced", "energy"],
         }
 
-    def _analyze_government(self, metadata: Dict) -> Dict:
-        """Extract government-related aesthetic influences"""
-        gov_type = metadata.get("government_type")
-
+        # Government aesthetic mapping
         government_aesthetics = {
             "monarchy": {
-                "themes": ["royal", "heraldic", "ornate", "hierarchical"],
-                "materials": ["gold", "precious_metals", "fine_fabrics"],
-                "symbols": ["crowns", "crests", "lions", "eagles"],
+                "preferred_materials": ["gold", "silver", "precious"],
+                "style_themes": ["ornate", "royal", "ceremonial"],
+                "weapon_preferences": ["sword", "mace"],
             },
             "democracy": {
-                "themes": ["accessible", "functional", "diverse", "open"],
-                "materials": ["varied", "sustainable", "practical"],
-                "symbols": ["doves", "hands", "circles", "balanced_scales"],
+                "preferred_materials": ["steel", "practical"],
+                "style_themes": ["functional", "standardized"],
+                "weapon_preferences": ["rifle", "standardized"],
             },
             "tribal_council": {
-                "themes": ["natural", "communal", "traditional", "organic"],
-                "materials": ["wood", "bone", "natural_fibers", "stone"],
-                "symbols": ["animals", "spirals", "trees", "circles"],
+                "preferred_materials": ["wood", "bone", "natural"],
+                "style_themes": ["tribal", "natural", "handcrafted"],
+                "weapon_preferences": ["spear", "bow", "axe"],
+            },
+            "theocracy": {
+                "preferred_materials": ["blessed", "ceremonial"],
+                "style_themes": ["religious", "ceremonial"],
+                "weapon_preferences": ["staff", "mace", "ceremonial"],
             },
         }
 
-        return government_aesthetics.get(gov_type, {})
-
-    def _analyze_technology(self, metadata: Dict) -> Dict:
-        """Determine technological constraints and opportunities"""
-        tech_level = metadata.get("technology_level")
-
-        tech_constraints = {
-            "stone_age": {
-                "available_materials": ["stone", "wood", "bone", "hide"],
-                "prohibited_materials": ["metal", "plastic", "electronics"],
-                "complexity_level": "simple",
-                "manufacturing": "handcrafted",
+        # Cultural aesthetics
+        cultural_aesthetics = {
+            "honor_based": {
+                "style_themes": ["decorated", "personal", "ceremonial"],
+                "complexity": "ornate",
             },
-            "iron_age": {
-                "available_materials": ["iron", "steel", "wood", "leather", "bronze"],
-                "prohibited_materials": ["plastic", "electronics", "advanced_alloys"],
-                "complexity_level": "moderate",
-                "manufacturing": "blacksmithed",
+            "achievement_oriented": {
+                "style_themes": ["efficient", "optimized", "advanced"],
+                "complexity": "functional",
             },
-            "post_scarcity": {
-                "available_materials": ["all", "smart_materials", "energy_materials"],
-                "prohibited_materials": [],
-                "complexity_level": "maximum",
-                "manufacturing": "automated_advanced",
+            "harmony_focused": {
+                "style_themes": ["balanced", "natural", "peaceful"],
+                "complexity": "simple",
             },
         }
 
-        return tech_constraints.get(tech_level, {})
+        return {
+            "allowed_weapon_types": tech_weapon_mapping.get(
+                tech_level, ["sword", "bow"]
+            ),
+            "government_aesthetics": government_aesthetics.get(government_type, {}),
+            "cultural_aesthetics": cultural_aesthetics.get(cultural_values, {}),
+            "tech_constraints": {
+                "level": tech_level,
+                "advanced_materials": tech_level
+                in ["information_age", "post_scarcity"],
+                "energy_weapons": tech_level == "post_scarcity",
+            },
+            "military_context": {
+                "structure": military_structure,
+                "primary_weapons": primary_weapons,
+                "ceremonial_needs": government_type in ["monarchy", "theocracy"],
+            },
+        }
+
+    @staticmethod
+    def calculate_compatibility_score(
+        weapon_metadata: Dict, civ_analysis: Dict
+    ) -> float:
+        """Calculate compatibility score between weapon and civilization"""
+        score = 0.0
+        max_score = 0.0
+
+        # Check weapon type compatibility
+        weapon_part_meta = weapon_metadata.get("weapon_part_metadata", {})
+        weapon_type = weapon_part_meta.get("weapon_type", "")
+
+        if weapon_type in civ_analysis.get("allowed_weapon_types", []):
+            score += 30
+        max_score += 30
+
+        # Check style compatibility
+        weapon_tags = weapon_metadata.get("tags", [])
+        gov_aesthetics = civ_analysis.get("government_aesthetics", {})
+
+        for theme in gov_aesthetics.get("style_themes", []):
+            if theme in weapon_tags:
+                score += 20
+        max_score += 20 * len(gov_aesthetics.get("style_themes", []))
+
+        # Check cultural compatibility
+        cultural_aesthetics = civ_analysis.get("cultural_aesthetics", {})
+        for theme in cultural_aesthetics.get("style_themes", []):
+            if theme in weapon_tags:
+                score += 15
+        max_score += 15 * len(cultural_aesthetics.get("style_themes", []))
+
+        # Technology appropriateness
+        tech_constraints = civ_analysis.get("tech_constraints", {})
+        if "advanced" in weapon_tags and not tech_constraints.get(
+            "advanced_materials", False
+        ):
+            score -= 25  # Penalty for anachronistic tech
+
+        if "energy" in weapon_tags and not tech_constraints.get(
+            "energy_weapons", False
+        ):
+            score -= 40  # Heavy penalty for impossible tech
+
+        max_score += 25  # Base tech score
+
+        return min(1.0, max(0.0, score / max_score)) if max_score > 0 else 0.0

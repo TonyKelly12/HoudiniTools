@@ -6,12 +6,11 @@ Main UI widget for the weapon generator interface.
 
 import hou
 from PySide2 import QtCore, QtWidgets, QtGui
-from PySide2.QtNetwork import QNetworkAccessManager, QNetworkReply
+from PySide2.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 import threading
 
 from .weapon_part_upload_widget import WeaponPartUploadWidget
 from .weapon_assembly import WeaponAssemblyAPI
-
 
 
 class WeaponGeneratorWidget(QtWidgets.QWidget):

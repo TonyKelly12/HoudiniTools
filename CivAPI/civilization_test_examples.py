@@ -204,8 +204,8 @@ def run_examples():
     try:
         response = client.session.get(f"{client.base_url}/health")
         print(f"API Health: {response.json()}\n")
-    except:
-        print("API is not running. Please start the server first.\n")
+    except Exception as e:
+        print(f"API is not running. Please start the server first. Error: {str(e)}\n")
         return
     
     # Create civilizations

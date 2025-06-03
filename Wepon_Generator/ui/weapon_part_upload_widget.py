@@ -8,7 +8,6 @@ from PySide2 import QtCore, QtWidgets, QtGui
 
 import os
 import threading
-from .weapon_assembly import WeaponAssemblyAPI
 
 
 class WeaponPartUploadWidget(QtWidgets.QWidget):
