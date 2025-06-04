@@ -9,10 +9,11 @@ import tempfile
 
 
 class WeaponAssemblyAPI:
-    """Class to handle communication with the 3D Weapon Assembly API"""
+    """Class to handle communication with the CivContextAPI for civilization-aware weapon generation"""
 
-    def __init__(self, base_url="http://localhost:8003"):
-        self.base_url = base_url
+    def __init__(self, base_url="http://localhost:8002", weapons_api_url="http://localhost:8003"):
+        self.base_url = base_url  # CivContextAPI
+        self.weapons_api_url = weapons_api_url  # Direct WeaponsAPI for fallback
         self.headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -21,6 +22,14 @@ class WeaponAssemblyAPI:
         self.cache = {}
         self.cache_timeout = 300  # 5 minutes
         self.cache_timestamps = {}
+        self.current_civilization_id = None
+
+    def set_civilization_context(self, civilization_id):
+        """Set the current civilization context for weapon recommendations"""
+        self.current_civilization_id = civilization_id
+        # Clear cache when civilization changes
+        if civilization_id:
+            self.clear_cache()
 
     def _check_cache(self, cache_key):
         """Check if valid cache exists for the key"""
@@ -42,13 +51,19 @@ class WeaponAssemblyAPI:
         self.cache_timestamps[cache_key] = time.time()
 
     def test_connection(self):
-        """Test connection to the API"""
+        """Test connection to the CivContextAPI"""
         try:
-            response = requests.get(f"{self.base_url}/", timeout=5)
+            response = requests.get(f"{self.base_url}/health", timeout=5)
             return response.status_code == 200
         except Exception as e:
-            print(f"API connection error: {str(e)}")
-            return False
+            print(f"CivContextAPI connection error: {str(e)}")
+            # Fallback to direct WeaponsAPI
+            try:
+                response = requests.get(f"{self.weapons_api_url}/", timeout=5)
+                return response.status_code == 200
+            except Exception as e2:
+                print(f"WeaponsAPI fallback connection error: {str(e2)}")
+                return False
 
     def get_weapon_types(self):
         """Get list of available weapon types"""
@@ -56,20 +71,25 @@ class WeaponAssemblyAPI:
         if self._check_cache(cache_key):
             return self.cache[cache_key]
 
-        # For now, return the enum values from model_schema.py directly
-        # In a real implementation, this would be a dedicated API endpoint
+        # If we have a civilization context, get analyzed weapon types
+        if self.current_civilization_id:
+            try:
+                url = f"{self.base_url}/weapons/analyze/{self.current_civilization_id}"
+                response = requests.get(url, headers=self.headers, timeout=10)
+                
+                if response.status_code == 200:
+                    analysis = response.json()
+                    weapon_types = analysis.get("analysis", {}).get("allowed_weapon_types", [])
+                    if weapon_types:
+                        self._update_cache(cache_key, weapon_types)
+                        return weapon_types
+            except Exception as e:
+                print(f"Error getting civilization weapon types: {str(e)}")
+
+        # Fallback to standard weapon types
         weapon_types = [
-            "sword",
-            "axe",
-            "mace",
-            "bow",
-            "spear",
-            "dagger",
-            "staff",
-            "shield",
-            "gun",
-            "rifle",
-            "custom",
+            "sword", "axe", "mace", "bow", "spear", "dagger", 
+            "staff", "shield", "gun", "rifle", "custom"
         ]
         self._update_cache(cache_key, weapon_types)
         return weapon_types
@@ -80,10 +100,8 @@ class WeaponAssemblyAPI:
         if self._check_cache(cache_key):
             return self.cache[cache_key]
 
-        # Get appropriate part types based on weapon type
-        # In a real implementation, this would be a dedicated API endpoint
+        # Standard part types mapping
         common_parts = ["handle", "grip"]
-
         part_types = {
             "sword": common_parts + ["blade", "guard", "pommel"],
             "axe": common_parts + ["head"],
@@ -103,22 +121,58 @@ class WeaponAssemblyAPI:
         return result
 
     def get_weapon_parts(self, weapon_type, part_type, page=1, limit=10):
-        """Get parts for a specific weapon type and part type with pagination"""
-        cache_key = f"parts_{weapon_type}_{part_type}_{page}_{limit}"
+        """Get parts for a specific weapon type and part type with civilization context"""
+        cache_key = f"parts_{weapon_type}_{part_type}_{page}_{limit}_{self.current_civilization_id}"
         if self._check_cache(cache_key):
             return self.cache[cache_key]
 
+        # If we have civilization context, use CivContextAPI
+        if self.current_civilization_id:
+            try:
+                url = f"{self.base_url}/weapons/parts/{self.current_civilization_id}"
+                params = {
+                    "weapon_type": weapon_type,
+                    "part_type": part_type,
+                    "limit": limit
+                }
+                
+                response = requests.get(url, params=params, headers=self.headers, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    # Extract parts from the response
+                    parts = []
+                    for item in data.get("parts", []):
+                        part_data = item.get("part", {})
+                        # Add compatibility score to metadata for sorting
+                        if "metadata" not in part_data:
+                            part_data["metadata"] = {}
+                        part_data["metadata"]["compatibility_score"] = item.get("compatibility_score", 0.0)
+                        parts.append(part_data)
+                    
+                    # Sort by compatibility score
+                    parts.sort(key=lambda x: x.get("metadata", {}).get("compatibility_score", 0), reverse=True)
+                    
+                    print(f"Retrieved {len(parts)} civilization-aware parts for {weapon_type}/{part_type}")
+                    self._update_cache(cache_key, parts)
+                    return parts
+                else:
+                    print(f"CivContextAPI Error ({response.status_code}): {response.text}")
+            except Exception as e:
+                print(f"Error getting civilization-aware weapon parts: {str(e)}")
+
+        # Fallback to direct WeaponsAPI call
         try:
             skip = (page - 1) * limit
             url = (
-                f"{self.base_url}/models/weapon-parts"
+                f"{self.weapons_api_url}/models/weapon-parts"
                 f"?weapon_type={weapon_type}"
                 f"&part_type={part_type}"
                 f"&skip={skip}"
                 f"&limit={limit}"
             )
-            print(f"Requesting URL: {url}")
-            response = requests.get(url, headers=self.headers)
+            print(f"Fallback to direct WeaponsAPI: {url}")
+            response = requests.get(url, headers=self.headers, timeout=10)
 
             if response.status_code == 200:
                 try:
@@ -126,32 +180,99 @@ class WeaponAssemblyAPI:
                     # Handle both direct list responses and paginated responses
                     if isinstance(data, dict) and "models" in data:
                         parts = data["models"]
-                        print(f"Retrieved {len(parts)} parts from paginated response")
                     elif isinstance(data, list):
                         parts = data
-                        print(f"Retrieved {len(parts)} parts from list response")
                     else:
-                        print(f"Unexpected response format: {type(data)}")
                         parts = []
 
+                    print(f"Retrieved {len(parts)} parts from fallback WeaponsAPI")
                     self._update_cache(cache_key, parts)
                     return parts
                 except ValueError as e:
                     print(f"JSON parsing error: {str(e)}")
-                    print(f"Response text: {response.text[:200]}")
                     return []
             else:
-                print(f"API Error ({response.status_code}): {response.text}")
+                print(f"WeaponsAPI Error ({response.status_code}): {response.text}")
                 return []
         except Exception as e:
-            print(f"Error getting weapon parts: {str(e)}")
+            print(f"Error getting weapon parts from fallback API: {str(e)}")
             return []
 
-    def download_model(self, model_id, target_path=None):
-        """Download a model file by its ID"""
+    def get_weapon_recommendations(self, weapon_type=None, limit=20, min_compatibility=0.3):
+        """Get weapon recommendations for the current civilization"""
+        if not self.current_civilization_id:
+            print("No civilization context set for recommendations")
+            return []
+
         try:
-            url = f"{self.base_url}/models/{model_id}"
-            response = requests.get(url, stream=True)
+            url = f"{self.base_url}/weapons/recommendations/{self.current_civilization_id}"
+            params = {
+                "limit": limit,
+                "min_compatibility": min_compatibility
+            }
+            if weapon_type:
+                params["weapon_type"] = weapon_type
+
+            response = requests.get(url, params=params, headers=self.headers, timeout=10)
+
+            if response.status_code == 200:
+                recommendations = response.json()
+                print(f"Retrieved {len(recommendations)} weapon recommendations")
+                return recommendations
+            else:
+                print(f"Error getting recommendations ({response.status_code}): {response.text}")
+                return []
+        except Exception as e:
+            print(f"Error getting weapon recommendations: {str(e)}")
+            return []
+
+    def get_weapon_assemblies(self, limit=10):
+        """Get weapon assemblies for the current civilization"""
+        if not self.current_civilization_id:
+            print("No civilization context set for assemblies")
+            return []
+
+        try:
+            url = f"{self.base_url}/weapons/assemblies/{self.current_civilization_id}"
+            params = {"limit": limit}
+
+            response = requests.get(url, params=params, headers=self.headers, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                assemblies = data.get("assemblies", [])
+                print(f"Retrieved {len(assemblies)} weapon assemblies")
+                return assemblies
+            else:
+                print(f"Error getting assemblies ({response.status_code}): {response.text}")
+                return []
+        except Exception as e:
+            print(f"Error getting weapon assemblies: {str(e)}")
+            return []
+
+    def analyze_civilization_context(self):
+        """Get detailed analysis of civilization weapon context"""
+        if not self.current_civilization_id:
+            return None
+
+        try:
+            url = f"{self.base_url}/weapons/analyze/{self.current_civilization_id}"
+            response = requests.get(url, headers=self.headers, timeout=10)
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"Error analyzing civilization ({response.status_code}): {response.text}")
+                return None
+        except Exception as e:
+            print(f"Error analyzing civilization context: {str(e)}")
+            return None
+
+    def download_model(self, model_id, target_path=None):
+        """Download a model file by its ID (fallback to WeaponsAPI)"""
+        try:
+            url = f"{self.weapons_api_url}/models/{model_id}"
+            response = requests.get(url, stream=True, timeout=30)
 
             if response.status_code == 200:
                 if target_path is None:
@@ -165,41 +286,33 @@ class WeaponAssemblyAPI:
 
                 return target_path
             else:
-                print(f"API Error ({response.status_code}): {response.text}")
+                print(f"Model download error ({response.status_code}): {response.text}")
                 return None
         except Exception as e:
             print(f"Error downloading model: {str(e)}")
             return None
 
-    # Add to WeaponAssemblyAPI class
     def upload_model(self, model_file_path, icon_file_path, metadata):
-        """Upload a model file with metadata to the API"""
+        """Upload a model file with metadata to the WeaponsAPI"""
         try:
-            url = f"{self.base_url}/models/"
+            url = f"{self.weapons_api_url}/models/"
 
             # Prepare files
-            files = {
-                "file": (
-                    os.path.basename(model_file_path),
-                    open(model_file_path, "rb"),
-                    "application/octet-stream",
-                ),
-                "icon": (
-                    os.path.basename(icon_file_path),
-                    open(icon_file_path, "rb"),
-                    "image/png",
-                ),
-                "metadata_json": (None, json.dumps(metadata)),
-            }
+            with open(model_file_path, "rb") as model_file, open(icon_file_path, "rb") as icon_file:
+                files = {
+                    "file": (os.path.basename(model_file_path), model_file, "application/octet-stream"),
+                    "icon": (os.path.basename(icon_file_path), icon_file, "image/png"),
+                }
+                data = {"metadata_json": json.dumps(metadata)}
 
-            # Make the request
-            response = requests.post(url, files=files)
+                # Make the request
+                response = requests.post(url, files=files, data=data, timeout=120)
 
-            if response.status_code == 200:
-                return response.json()
-            else:
-                print(f"API Error ({response.status_code}): {response.text}")
-                return None
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    print(f"Upload error ({response.status_code}): {response.text}")
+                    return None
         except Exception as e:
             print(f"Error uploading model: {str(e)}")
             return None
@@ -211,30 +324,30 @@ class WeaponAssemblyAPI:
             return self.cache[cache_key]
 
         try:
-            url = f"{self.base_url}/models/metadata/{model_id}"
-            response = requests.get(url, headers=self.headers)
+            url = f"{self.weapons_api_url}/models/metadata/{model_id}"
+            response = requests.get(url, headers=self.headers, timeout=10)
 
             if response.status_code == 200:
                 data = response.json()
                 self._update_cache(cache_key, data)
                 return data
             else:
-                print(f"API Error ({response.status_code}): {response.text}")
+                print(f"Metadata error ({response.status_code}): {response.text}")
                 return None
         except Exception as e:
             print(f"Error getting model metadata: {str(e)}")
             return None
 
     def create_assembly(self, assembly_data):
-        """Create a new weapon assembly"""
+        """Create a new weapon assembly (fallback to WeaponsAPI)"""
         try:
-            url = f"{self.base_url}/assemblies"
-            response = requests.post(url, json=assembly_data, headers=self.headers)
+            url = f"{self.weapons_api_url}/assemblies"
+            response = requests.post(url, json=assembly_data, headers=self.headers, timeout=30)
 
             if response.status_code == 200:
                 return response.json()
             else:
-                print(f"API Error ({response.status_code}): {response.text}")
+                print(f"Assembly creation error ({response.status_code}): {response.text}")
                 return None
         except Exception as e:
             print(f"Error creating assembly: {str(e)}")

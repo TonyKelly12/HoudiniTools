@@ -8,7 +8,7 @@ import hou
 from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 import threading
-
+import requests
 from .weapon_part_upload_widget import WeaponPartUploadWidget
 from .weapon_assembly import WeaponAssemblyAPI
 
@@ -23,6 +23,10 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
     weaponAssembled = QtCore.Signal(object, object)
     progressUpdated = QtCore.Signal(int)
     refreshRequested = QtCore.Signal()
+    civilizationsLoaded = QtCore.Signal(object)
+    analysisCompleted = QtCore.Signal(object)
+    analysisError = QtCore.Signal()
+    recommendationsReceived = QtCore.Signal(object)
 
     def __init__(self, parent=None, node_path=None):
         super(WeaponGeneratorWidget, self).__init__(parent)
@@ -52,6 +56,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         self.weaponAssembled.connect(self.on_weapon_assembled)
         self.progressUpdated.connect(self.update_progress)
         self.refreshRequested.connect(self.refresh_parts)
+        self.civilizationsLoaded.connect(self.update_civilizations_list)
         # Test API connection and initialize
         self.initialize()
 
@@ -61,7 +66,7 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
             self.progress_dialog.setValue(value)
 
     def create_ui(self):
-        """Create the user interface"""
+        """Create the user interface with civilization selection"""
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
 
@@ -80,15 +85,46 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
 
         # API URL configuration
         self.url_layout = QtWidgets.QHBoxLayout()
-        self.url_label = QtWidgets.QLabel("API URL:")
-        self.url_input = QtWidgets.QLineEdit("http://localhost:8003")
-        self.url_input.setPlaceholderText("http://localhost:8003")
+        self.url_label = QtWidgets.QLabel("Context API URL:")
+        self.url_input = QtWidgets.QLineEdit("http://localhost:8002")
+        self.url_input.setPlaceholderText("http://localhost:8002")
         self.connect_button = QtWidgets.QPushButton("Connect")
         self.connect_button.clicked.connect(self.test_connection)
 
         self.url_layout.addWidget(self.url_label)
         self.url_layout.addWidget(self.url_input, 1)
         self.url_layout.addWidget(self.connect_button)
+
+        # Civilization selection section
+        self.civ_layout = QtWidgets.QHBoxLayout()
+        self.civ_label = QtWidgets.QLabel("Civilization:")
+        self.civ_combo = QtWidgets.QComboBox()
+        self.civ_combo.setMinimumWidth(200)
+        self.civ_combo.currentIndexChanged.connect(self.on_civilization_changed)
+
+        self.load_civs_button = QtWidgets.QPushButton("Load Civilizations")
+        self.load_civs_button.clicked.connect(self.load_civilizations)
+
+        self.analyze_button = QtWidgets.QPushButton("Analyze Context")
+        self.analyze_button.clicked.connect(self.analyze_civilization)
+        self.analyze_button.setEnabled(False)
+
+        self.civ_layout.addWidget(self.civ_label)
+        self.civ_layout.addWidget(self.civ_combo, 1)
+        self.civ_layout.addWidget(self.load_civs_button)
+        self.civ_layout.addWidget(self.analyze_button)
+
+        # Context info display
+        self.context_info = QtWidgets.QTextEdit()
+        self.context_info.setMaximumHeight(80)
+        self.context_info.setPlaceholderText(
+            "Select a civilization to see weapon context analysis..."
+        )
+        self.context_info.setReadOnly(True)
+        
+        self.analysisCompleted.connect(self.display_civilization_analysis)
+        self.analysisError.connect(self.display_analysis_error)
+        self.recommendationsReceived.connect(self.display_recommendations)
 
         # Weapon type selection
         self.type_layout = QtWidgets.QHBoxLayout()
@@ -97,11 +133,16 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         self.type_combo.setMinimumWidth(150)
         self.type_combo.currentIndexChanged.connect(self.on_weapon_type_changed)
 
+        self.recommendations_button = QtWidgets.QPushButton("Get Recommendations")
+        self.recommendations_button.clicked.connect(self.get_weapon_recommendations)
+        self.recommendations_button.setEnabled(False)
+
         self.type_layout.addWidget(self.type_label)
         self.type_layout.addWidget(self.type_combo)
+        self.type_layout.addWidget(self.recommendations_button)
         self.type_layout.addStretch()
 
-        # Parts selection area will be added dynamically
+        # Parts selection area
         self.parts_layout = QtWidgets.QHBoxLayout()
         self.parts_layout.setSpacing(15)
 
@@ -124,18 +165,20 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         self.reset_button = QtWidgets.QPushButton("Reset")
         self.reset_button.clicked.connect(self.reset_selection)
 
-        self.action_layout.addWidget(self.reset_button)
-        self.action_layout.addStretch()
-        self.action_layout.addWidget(self.create_button)
-
         self.refresh_button = QtWidgets.QPushButton("Refresh Parts")
         self.refresh_button.setToolTip("Refresh available parts from the server")
         self.refresh_button.clicked.connect(self.refresh_all_parts)
-        self.status_layout.addWidget(self.refresh_button)
+
+        self.action_layout.addWidget(self.reset_button)
+        self.action_layout.addWidget(self.refresh_button)
+        self.action_layout.addStretch()
+        self.action_layout.addWidget(self.create_button)
 
         # Add all layouts to main layout
         main_layout.addLayout(self.status_layout)
         main_layout.addLayout(self.url_layout)
+        main_layout.addLayout(self.civ_layout)
+        main_layout.addWidget(self.context_info)
         main_layout.addLayout(self.type_layout)
         main_layout.addWidget(self.scroll_area)
         main_layout.addLayout(self.action_layout)
@@ -222,48 +265,258 @@ class WeaponGeneratorWidget(QtWidgets.QWidget):
         for part_type in part_types:
             self.add_part_selection(weapon_type, part_type)
 
+    def load_civilizations(self):
+        """Load civilizations from CivAPI via CivContextAPI"""
+        self.status_label.setText("Loading civilizations...")
+        threading.Thread(target=self._fetch_civilizations).start()
+
+    def _fetch_civilizations(self):
+        """Fetch civilizations in background thread"""
+        try:
+            # Call CivAPI directly to get civilizations list
+            civ_api_url = "http://localhost:8001"  # CivAPI URL
+            response = requests.get(f"{civ_api_url}/civilizations/", timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                civilizations = data.get("civilizations", [])
+                self.civilizationsLoaded.emit(civilizations)
+            else:
+                print(f"Error loading civilizations: {response.status_code}")
+                self.civilizationsLoaded.emit([])
+        except Exception as e:
+            print(f"Error fetching civilizations: {str(e)}")
+            self.civilizationsLoaded.emit([])
+
+    def update_civilizations_list(self, civilizations):
+        """Update the civilizations dropdown"""
+        self.civilizations = civilizations
+        self.civ_combo.clear()
+        self.civ_combo.addItem("Select a civilization...", None)
+
+        for civ in civilizations:
+            name = civ.get("metadata", {}).get("name", "Unknown")
+            civ_id = civ.get("id")
+            tech_level = civ.get("metadata", {}).get("technology_level", "unknown")
+            gov_type = civ.get("metadata", {}).get("government_type", "unknown")
+
+            display_text = f"{name} ({tech_level}, {gov_type})"
+            self.civ_combo.addItem(display_text, civ_id)
+
+        self.status_label.setText(f"Loaded {len(civilizations)} civilizations")
+
+    def on_civilization_changed(self, index):
+        """Handle civilization selection change"""
+        if index <= 0:  # "Select a civilization..." option
+            self.current_civilization = None
+            self.api.set_civilization_context(None)
+            self.analyze_button.setEnabled(False)
+            self.recommendations_button.setEnabled(False)
+            self.context_info.clear()
+            self.type_combo.clear()
+            self.clear_parts_ui()
+            return
+
+        civ_id = self.civ_combo.itemData(index)
+        if civ_id:
+            self.current_civilization = civ_id
+            self.api.set_civilization_context(civ_id)
+            self.analyze_button.setEnabled(True)
+            self.recommendations_button.setEnabled(True)
+
+            # Auto-analyze the civilization
+            self.analyze_civilization()
+
+    def analyze_civilization(self):
+        """Analyze the selected civilization for weapon context"""
+        if not self.current_civilization:
+            return
+
+        self.status_label.setText("Analyzing civilization context...")
+        threading.Thread(target=self._analyze_civilization).start()
+
+    def _analyze_civilization(self):
+        """Analyze civilization in background thread"""
+        try:
+            analysis = self.api.analyze_civilization_context()
+            if analysis:
+                self.analysisCompleted.emit(analysis)  # ← Simple signal emission
+            else:
+                self.analysisError.emit()
+        except Exception as e:
+            print(f"Error analyzing civilization: {str(e)}")
+            self.analysisError.emit()
+
+    def display_civilization_analysis(self, analysis):
+        """Display the civilization analysis results"""
+        try:
+            summary = analysis.get("summary", {})
+            civ_name = summary.get("civilization_name", "Unknown")
+            tech_level = summary.get("technology_level", "unknown")
+            gov_type = summary.get("government_type", "unknown")
+            military = summary.get("military_structure", "unknown")
+            allowed_weapons = summary.get("allowed_weapon_types", [])
+            aesthetics = summary.get("aesthetic_preferences", [])
+
+            context_text = f"""Civilization: {civ_name}
+Technology: {tech_level} | Government: {gov_type} | Military: {military}
+Allowed Weapons: {', '.join(allowed_weapons)}
+Aesthetic Preferences: {', '.join(aesthetics)}"""
+
+            self.context_info.setText(context_text)
+
+            # Update weapon types based on analysis
+            self.load_weapon_types_from_analysis(allowed_weapons)
+
+            self.status_label.setText("Civilization analysis complete")
+        except Exception as e:
+            print(f"Error displaying analysis: {str(e)}")
+            self.display_analysis_error()
+
+    def display_analysis_error(self):
+        """Display error message for analysis"""
+        self.context_info.setText("Error analyzing civilization context")
+        self.status_label.setText("Analysis failed")
+
+    def load_weapon_types_from_analysis(self, allowed_weapons):
+        """Load weapon types based on civilization analysis"""
+        self.type_combo.clear()
+
+        if allowed_weapons:
+            for weapon_type in allowed_weapons:
+                display_name = weapon_type.replace("_", " ").title()
+                self.type_combo.addItem(display_name, weapon_type)
+        else:
+            # Fallback to all weapon types
+            weapon_types = self.api.get_weapon_types()
+            for weapon_type in weapon_types:
+                display_name = weapon_type.replace("_", " ").title()
+                self.type_combo.addItem(display_name, weapon_type)
+
+    def get_weapon_recommendations(self):
+        """Get weapon recommendations for the current civilization"""
+        if not self.current_civilization:
+            QtWidgets.QMessageBox.warning(
+                self, "No Civilization", "Please select a civilization first."
+            )
+            return
+
+        weapon_type = None
+        if self.type_combo.currentIndex() >= 0:
+            weapon_type = self.type_combo.currentData()
+
+        self.status_label.setText("Getting weapon recommendations...")
+        threading.Thread(target=self._get_recommendations, args=(weapon_type,)).start()
+
+    def _get_recommendations(self, weapon_type):
+        """Get recommendations in background thread"""
+        try:
+            recommendations = self.api.get_weapon_recommendations(
+                weapon_type=weapon_type, limit=20, min_compatibility=0.3
+            )
+
+            self.recommendationsReceived.emit(recommendations)
+        except Exception as e:
+            print(f"Error getting recommendations: {str(e)}")
+
+    def display_recommendations(self, recommendations):
+        """Display weapon recommendations"""
+        if not recommendations:
+            QtWidgets.QMessageBox.information(
+                self,
+                "No Recommendations",
+                "No weapon recommendations found for this civilization.",
+            )
+            return
+
+        # Create a dialog to show recommendations
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("Weapon Recommendations")
+        dialog.setMinimumSize(600, 400)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+
+        # Create a list widget
+        list_widget = QtWidgets.QListWidget()
+
+        for rec in recommendations:
+            weapon_name = rec.get("metadata", {}).get("name", "Unknown")
+            compatibility = rec.get("compatibility_score", 0.0)
+            reasons = rec.get("reasons", [])
+
+            item_text = f"{weapon_name} (Compatibility: {compatibility:.2f})\nReasons: {', '.join(reasons)}"
+            list_widget.addItem(item_text)
+
+        layout.addWidget(list_widget)
+
+        # Add close button
+        close_button = QtWidgets.QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+
+        dialog.exec_()
+        self.status_label.setText(f"Found {len(recommendations)} recommendations")
+
+    def on_weapon_type_changed(self, index):
+        """Handle weapon type selection change"""
+        if index < 0:
+            return
+
+        # Clear previous parts UI
+        self.clear_parts_ui()
+
+        # Reset selection
+        self.selected_parts = {}
+        self.part_models = {}
+
+        # Get weapon type
+        weapon_type = self.type_combo.itemData(index)
+        if not weapon_type:
+            return
+
+        # Get part types for the selected weapon type
+        part_types = self.api.get_part_types(weapon_type)
+
+        # Create UI for each part type
+        for part_type in part_types:
+            self.add_part_selection(weapon_type, part_type)
+
     def clear_parts_ui(self):
         """Clear the parts UI layout"""
-        # Remove all widgets from the layout
         while self.parts_layout.count():
             item = self.parts_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        # Clear tracking dictionaries
         self.part_widgets = {}
         self.current_pages = {}
         self.has_more_pages = {}
 
     def refresh_all_parts(self):
         """Refresh all parts by clearing cache and reloading data"""
-        # Show a loading indicator
         self.status_label.setText("Refreshing parts...")
-
-        # Clear the API cache to force fresh data
         self.api.clear_cache()
-
-        # Emit signal to refresh the current view
         self.refreshRequested.emit()
-
-        # Update status
         self.status_label.setText("Parts refreshed")
 
     def refresh_parts(self):
-        """Refresh current weapon type parts - triggered by refresh button"""
-        # Get current weapon type
+        """Refresh current weapon type parts"""
         weapon_type_index = self.type_combo.currentIndex()
         if weapon_type_index < 0:
             return
 
-        # Store current selections before refresh
         old_selections = self.selected_parts.copy()
-
-        # Re-trigger the weapon type changed event to reload everything
         self.on_weapon_type_changed(weapon_type_index)
-
-        # Try to restore previous selections after refresh
         self.selected_parts = old_selections
+
+    # Include the rest of the methods from the original widget...
+    # (add_part_selection, load_parts, update_parts_display, etc.)
+    # These remain largely the same but now use the updated API
+
+    def update_progress(self, value):
+        """Update the progress dialog"""
+        if hasattr(self, "progress_dialog") and self.progress_dialog:
+            self.progress_dialog.setValue(value)
 
     def add_part_selection(self, weapon_type, part_type):
         """Add UI elements for selecting a part type"""

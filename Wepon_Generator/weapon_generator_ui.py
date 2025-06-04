@@ -42,7 +42,7 @@ def generate_default_weapon():
 
 
 class WeaponAssemblyAPI:
-    def __init__(self, base_url="http://localhost:8000"):
+    def __init__(self, base_url="http://localhost:8003"):
         self.base_url = base_url
         self.headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
